@@ -283,3 +283,18 @@ table.alm{width:100%;border-collapse:collapse;font-size:14px}
 .wp-link:hover{text-decoration:underline}
 .night .wp-dot{font-size:10px;line-height:1;color:var(--gold-ink);background:var(--gold);border-radius:999px;padding:2px 6px}
 @media (max-width:760px){.wp{grid-template-columns:minmax(0,1fr)}}
+.fm-table{width:100%;border-collapse:collapse;font-size:14px}
+.fm-wrap{overflow-x:auto}
+.fm-table th{text-align:left;font-weight:500;color:var(--ink-3);font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:6px 12px 6px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+.fm-table td{padding:9px 12px 9px 0;border-top:1px solid var(--rule);vertical-align:top}
+.fm-table tr:first-child td{border-top:0}
+.fm-table td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fm-table .nm{color:var(--ink)}
+.fm-tag{display:inline-block;font-size:11.5px;border:1px solid var(--rule);border-radius:999px;padding:1px 8px;margin:2px 4px 0 0;color:var(--ink-2)}
+.fm-tag.super{border-color:var(--gold);color:var(--gold)}
+.fm-tag.ecl{background:#5a1f22;border-color:#8a3a3c;color:#f2d6d0}
+.fm-tag.wp{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
+tr.is-past{opacity:.42}
+tr.is-next td{background:rgba(233,196,124,.08)}
+.fm-more{color:var(--gold);text-decoration:none;font-weight:500}
+.fm-more:hover{text-decoration:underline}
