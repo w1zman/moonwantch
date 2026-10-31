@@ -387,7 +387,7 @@ const I18N = {
     dD:"{d} days", dDH:"{d} d {h} h", dHM:"{h} h {m} min", dM:"{m} min",
     h1Root:"Moon phase today", h1City:"Moon phase today in {city}",
     titleRoot:"Moon Phase Today – Live 3D Moon Tracker | Moonwatch", titleCity:"Moon Phase Today in {city} – Moonrise, Moonset & Full Moon | Moonwatch",
-    descRoot:"Today's moon phase live in 3D: how full the Moon is, moonrise and moonset, the next full moon and where to see it, for 228 cities worldwide. Free, in English and Thai.",
+    descRoot:"Today's moon phase live in 3D: how full the Moon is, moonrise and moonset, the next full moon and where to see it, for 228 cities worldwide. Free, in English, Thai and Norwegian.",
     descCity:"Moon phase today in {city}: live illumination, moonrise and moonset in local time, the next full moon and the best time to see the Moon, shown in 3D.",
     faqEyebrow:"Moon questions", faqTitle:"About the Moon", otherCities:"Moon phase today in other cities", citiesEyebrow:"228 cities", langLink:"อ่านหน้านี้เป็นภาษาไทย",
     q1:"What is the Moon's phase today?", a1:"The Moon's phase is how much of its sunlit half we can see from Earth. Moonwatch calculates it live for the selected city, shows the exact percentage illuminated, and turns the 3D Moon to match what you see in your own sky. A full cycle from new moon to new moon takes about 29.5 days.",
@@ -478,26 +478,113 @@ const I18N = {
     q4:"ทำไมดวงจันทร์ขึ้นไม่ตรงเวลาเดิมทุกวัน?", a4:"ดวงจันทร์เคลื่อนที่ไปตามวงโคจรวันละประมาณ 13° โลกจึงต้องหมุนต่ออีกเล็กน้อยกว่าดวงจันทร์จะขึ้นอีกครั้ง โดยเฉลี่ยดวงจันทร์ขึ้นช้าลงวันละประมาณ 50 นาที แต่แตกต่างกันมากตามฤดูกาลและตำแหน่งที่อยู่",
     q5:"ทำไมดวงจันทร์ดูกลับหัวในซีกโลกใต้?", a5:"คนที่อยู่ใต้เส้นศูนย์สูตรมองดวงจันทร์จากอีกฟากของโลก ดวงจันทร์จึงดูหมุนไปประมาณ 180 องศา จันทร์ข้างขึ้นจะสว่างด้านซ้ายแทนด้านขวา Moonwatch แสดงดวงจันทร์เอียงตรงตามที่เห็นจากเมืองที่คุณเลือก",
     q6:"มองเห็นดวงจันทร์ตอนกลางวันได้ไหม?", a6:"ได้ ดวงจันทร์อยู่เหนือขอบฟ้าประมาณครึ่งหนึ่งของแต่ละวัน และในหลายช่วงของเดือนบางส่วนของเวลานั้นตรงกับกลางวัน มองเห็นได้ง่ายเป็นดวงสีซีดในช่วงบ่ายราวขึ้นครึ่งดวง และช่วงเช้าราวแรมครึ่งดวง"
+  },
+  no: {
+    brandSub:"Månen live i 3D", skyOver:"Himmelen over", cityAria:"By", langAria:"Språk",
+    vSky:"Slik du ser den", vNorth:"Nord opp", tempo:"Tempo", tempoAria:"Animasjonsfart", loading:"Laster inn månen…",
+    backLive:"Tilbake til nå", phaseNow:"Månefase nå", illuminated:"opplyst",
+    tkNew:"Ny", tkFq:"Første kv.", tkFull:"Full", tkLq:"Siste kv.",
+    visibility:"Synlighet", moonrise:"Måneoppgang", moonset:"Månenedgang", highest:"Høyest",
+    playMonth:"Spill av måneden", pause:"Pause", play:"Spill av", playAria:"Spill av månemåneden",
+    sp1:"1 t/s", sp6:"6 t/s", sp24:"1 døgn/s", endPast:"−15 dager", endNow:"nå", endFut:"+45 dager", scrubAria:"Flytt i tid",
+    chartIntro:"Hvor høyt månen står over horisonten time for time. Bakgrunnen viser dag og mørke, så du ser når månen står på en mørk himmel.",
+    lgDay:"Dag", lgTwi:"Skumring", lgNaut:"Nautisk skumring", lgDark:"Mørkt", lgMoon:"Månen", lgSun:"Sola",
+    comingPhases:"Kommende faser", phaseCal:"Fasekalender",
+    nights30:"Neste 30 netter · kl. 22:00", howFull:"Hvor full, natt for natt", tapNight:"Trykk på en natt for å flytte 3D-månen og alle tallene til den kvelden.",
+    whyLooks:"Derfor ser den slik ut", sem:"Sola, jorda og månen nå", focEarth:"Jorda", focMoon:"Månen", zoomIn:"Zoom inn", zoomOut:"Zoom ut",
+    almanac:"Almanakk", moonData:"Månedata",
+    foot:"Posisjonene regnes ut direkte i nettleseren med Astronomy Engine av Don Cross, nøyaktig til godt under ett minutt. Alle tider er lokal tid i valgt by, inkludert sommertid. Opp- og nedgangstider gjelder flat horisont ved havnivå, så fjell og høye bygninger gjør at månen kommer senere opp og går tidligere ned. 3D-visningen bruker den ekte helningen, librasjonen og belysningen for valgt sted; banevisningen er ikke i målestokk.",
+    fullScreen:"Fullskjerm", close:"Lukk", fsMoonAria:"Vis månen i fullskjerm", fsOrbitAria:"Vis sola, jorda og månen i fullskjerm", fsCloseAria:"Lukk fullskjerm",
+    olMoon:"Månen", olEarth:"Jorda", olSun:"Sollys →", zenithUp:"SENIT OPP", northUp:"NORD OPP", compassN:"N",
+    today:"i dag", tomorrow:"i morgen", yesterday:"i går", todayCap:"I dag", in:"om {d}", ago:"for {d} siden",
+    waxNo:"Voksende, større hver natt · sett fra {city}", wanNo:"Minkende, mindre hver natt · sett fra {city}",
+    illumSide:"av siden som vender mot jorda er solbelyst",
+    cycleMeta:"Dag {age} av 29,5{since} · lunasjon {n}", cycleSince:" siden nymånen {d}",
+    exactFull:"Helt full <b>{d}</b>", wasFull:"Var helt full <b>{d}</b>",
+    subNearest:"{day} kl. {time}. Neste nymåne {day2}, {d2}.", fullIn:"Fullmåne <b>{d}</b>",
+    beforeThat:" Før det: {ph} {day} kl. {time}.", subFull:"{day} kl. {time} {zone}.{after}",
+    ocLine:"<b>{pct} % opplyst</b> · månen står {e}° fra sola sett fra jorda · {km} km fra {city} · dra for å snu, knip eller rull for å zoome",
+    fsLine:"<b>{pct} % opplyst</b> · {lead} · {city} {pos}", altUp:"{a}° over horisonten", belowHorizon:"under horisonten",
+    capSky:"<strong>{city}, {time}</strong> · vippet akkurat slik den ser ut på himmelen · {alt}° høyt, {dir}",
+    capNorth:"<strong>{city}, {time}</strong> · nord opp, som i et teleskopkart · {alt}° høyt, {dir}",
+    clockLive:"Live · ", clockTravel:"Tidsreise · ", live:"Live", ahead:"{d} fram i tid",
+    altJust:"så vidt over horisonten i {dir}", altAbove:"{a}° over horisonten i {dir}",
+    shNew:"nymånen", shCres:"månesigden", shHalf:"halvmånen", shFull:"fullmånen", shNearly:"den nesten fulle månen", shGib:"månen",
+    hGlare:"Skjult i sollyset", tGlare:"Månen står bare {e}° fra sola på himmelen og kan ikke ses. Om noen dager kommer den tilbake som en tynn sigd.",
+    hVisible:"Synlig nå", tVisible:"Nå står {shape} <b>{alt}</b>, og himmelen er {dark}", darkFull:"mørk.", darkEnough:"mørk nok til å se den godt.",
+    hTwilight:"Oppe i skumringen", tTwilight:"Nå står {shape} <b>{alt}</b> på en skumringshimmel.",
+    hDay:"Oppe i dagslys", tDay:"Nå står {shape} <b>{alt}</b>. Se etter en blek skive på dagshimmelen.",
+    tLow:"Den står lavt, så fjell eller bygninger kan skjule den.", tUpAll:"Den holder seg over horisonten de neste to døgnene uten å gå ned.",
+    tSets:"Den går ned kl. <b>{time}</b> {day}i {dir} ({d}).",
+    hBelow:"Under horisonten", tDownAll:"Fra {city} kommer den ikke opp i det hele tatt de neste to døgnene. Det skjer langt fra ekvator når månen står langt {ns} på himmelen.",
+    north:"nord", south:"sør",
+    tRises:"Den kommer opp kl. <b>{time}</b> {day} i {dir} ({d}){when}", riseDark:", på mørk himmel.", riseTwi:", i skumringen.", riseDay:", i dagslys.",
+    tThrough:"3D-visningen viser hvordan den ville sett ut om du kunne se gjennom jorda.",
+    pillUp:"{a}° oppe", pillDown:"{a}° under",
+    alreadyUp:"Allerede oppe", noRise:"Kommer ikke opp", alreadyDown:"Allerede nede", noSet:"Går ikke ned", next48:"neste 48 t", stillBelow:"fortsatt under horisonten",
+    skyTitle:"Månens bane over {city}", next24:"Neste 24 timer", around24:"24 timer rundt {d}", now:"nå",
+    rangeNowNight:"nå og resten av natta", rangeFromNight:"fra {from} og resten av natta", rangeFromTo:"{from} til {to}",
+    bestView:"<b>Best utsikt: {range}.</b> Da står månen på mørk himmel, høyest kl. {time}, {alt}° over horisonten i {dir}.",
+    bestNoDark:"<b>Ingen mørk himmel med måne de neste 24 timene.</b> Månen er bare oppe i dagslys eller skumring, høyest kl. {time} ({alt}° {dir}).",
+    bestNone:"<b>Månen holder seg under horisonten de neste 24 timene</b> sett fra {city}.",
+    evUp:"{a}° oppe i {city}", evBelow:"under horisonten da",
+    aIllum:"Belysning", aIllumD:"lysstyrke (magnitude) {m}", aPhase:"Fasevinkel", aPhaseD:"vinkelen sol–måne–jord; 0° er full",
+    aElong:"Avstand fra sola på himmelen", aElongD:"elongasjon; 180° er rett overfor sola",
+    aAge:"Månens alder", days:"{x} dager", aAgeD:"nymåne var {d} {time}", aLun:"Lunasjonsnummer", aLunD:"Browns serie, lunasjon 1 startet jan. 1923",
+    aDist:"Avstand", km:"{x} km", kmFrom:"{x} km fra {city}", aSize:"Tilsynelatende størrelse", aSizeD:"bueminutter i diameter",
+    aPos:"Posisjon", aPosD:"høyde · asimut fra {city}", aDec:"Deklinasjon", aDecSets:"går aldri ned her ved denne deklinasjonen", aDecRises:"kommer aldri opp her ved denne deklinasjonen", aDecD:"hvor langt nord månen står på himmelen",
+    aCon:"Stjernebilde", aConD:"stjernene bak månen", aLib:"Librasjon", aLibV:"bredde {a}° · lengde {b}°", aLibD:"{pole} og {limb} rand vippet mot oss",
+    poleS:"sørpolen", poleN:"nordpolen", limbW:"vestlig", limbE:"østlig",
+    aPeri:"Neste perigeum (nærmest)", aApo:"Neste apogeum (lengst unna)", aEcl:"Neste måneformørkelse",
+    ecl_penumbral:"halvskygge (bare svak skygge)", ecl_partial:"delvis", ecl_total:"total (blodmåne)", ecl_annular:"ringformet",
+    eclUp:"månen {a}° oppe i {city}", eclDown:"månen under horisonten i {city}",
+    aSun:"Sola", sDay:"dagslys", sCivil:"borgerlig skumring", sNaut:"nautisk skumring", sAstro:"astronomisk skumring", sNight:"mørk natt",
+    why1:"Månen passerer mellom jorda og sola. Den opplyste halvdelen vender bort fra oss, så vi ser lite eller ingenting av den.",
+    why2:"Månen står litt til siden for sola, så vi ser en tynn kant av den opplyste halvdelen: en sigd.",
+    why3:"Månen står i rett vinkel til sola sett fra jorda, så vi ser nøyaktig halvparten av den opplyste siden: halvmåne.",
+    why4:"Månen står på motsatt side av jorda fra sola, så det meste av den opplyste halvdelen vender mot oss.",
+    why5:"Månen står nesten rett overfor sola, så hele den opplyste halvdelen vender mot oss: fullmåne.",
+    orbitText:"Sola lyser alltid opp halve månen. Akkurat nå står månen {e}° fra sola sett fra jorda. {why} Dra for å snu visningen, og bruk + og − (eller knip og rull) for å zoome. Velg Månen for å zoome helt inn på den.",
+    chartHorizon:"horisont", chartNow:"nå", chartRise:"opp ", chartSet:"ned ", chartAria:"Månens høyde de neste 24 timene",
+    nightAria:"{d} kl. 22:00, {p} prosent opplyst",
+    tMin:"{x} min/s", tH:"{x} t/s", tDay1:"{x} døgn/s", tDays:"{x} døgn/s",
+    dD:"{d} dager", dDH:"{d} d {h} t", dHM:"{h} t {m} min", dM:"{m} min",
+    h1Root:"Månefase i dag", h1City:"Månefase i dag i {city}",
+    titleRoot:"Månefase i dag – månen live i 3D | Moonwatch", titleCity:"Månefase i dag i {city} – måneoppgang, månenedgang og fullmåne | Moonwatch",
+    descRoot:"Dagens månefase live i 3D: hvor full månen er, måneoppgang og månenedgang, neste fullmåne og når du ser den best, for 228 byer i Norge og verden. Gratis.",
+    descCity:"Månefase i dag i {city}: hvor mye av månen som er opplyst, måneoppgang og månenedgang i lokal tid, neste fullmåne og beste tid å se månen, vist i 3D.",
+    faqEyebrow:"Spørsmål om månen", faqTitle:"Om månen", otherCities:"Månefase i dag i andre byer", citiesEyebrow:"228 byer", langLink:"",
+    q1:"Hvilken månefase er det i dag?", a1:"Månefasen er hvor mye av den solbelyste halvdelen av månen vi ser fra jorda. Moonwatch regner den ut direkte for byen du velger, viser nøyaktig hvor mange prosent som er opplyst, og snur 3D-månen slik den ser ut på himmelen der du er. En hel syklus fra nymåne til nymåne tar omtrent 29,5 døgn.",
+    q2:"Når er neste fullmåne?", a2:"Det er fullmåne omtrent hver 29,5 dag, når månen står rett overfor sola på himmelen. Nedtellingen øverst på siden viser dato og lokal tid for neste fullmåne, og fasekalenderen viser kommende nymåne, første kvarter, fullmåne og siste kvarter.",
+    q3:"Hva er de åtte månefasene?", a3:"Nymåne, voksende månesigd, første kvarter, voksende måne, fullmåne, minkende måne, siste kvarter og minkende månesigd. Voksende betyr at den opplyste delen blir større hver natt; minkende at den blir mindre. I Norge er en voksende måne opplyst på høyre side, som en «D», og en minkende måne ligner en «C».",
+    q4:"Hvorfor kommer månen opp til ulik tid hver dag?", a4:"Månen flytter seg omtrent 13° i banen sin hvert døgn, så jorda må rotere litt lenger før månen kommer opp igjen. I snitt kommer månen opp rundt 50 minutter senere hver dag, men det varierer mye med årstiden og hvor langt nord du bor. I Nord-Norge kan månen holde seg oppe eller nede i flere døgn.",
+    q5:"Hvorfor ser månen opp-ned ut på den sørlige halvkule?", a5:"Folk sør for ekvator ser månen fra den andre siden av jorda, så den ser ut til å være snudd rundt 180 grader: en voksende måne er opplyst på venstre side i stedet for høyre. Moonwatch viser månen vippet akkurat slik den ser ut fra byen du velger.",
+    q6:"Kan jeg se månen om dagen?", a6:"Ja. Månen er over horisonten omtrent halve døgnet, og store deler av måneden faller noe av den tiden i dagslys. Den er lettest å få øye på som en blek skive om ettermiddagen rundt første kvarter og om morgenen rundt siste kvarter."
   }
 };
 const PHN = {
   en: {new:"New moon", wxc:"Waxing crescent", fq:"First quarter", wxg:"Waxing gibbous", full:"Full moon", wng:"Waning gibbous", lq:"Last quarter", wnc:"Waning crescent"},
+  no: {new:"Nymåne", wxc:"Voksende månesigd", fq:"Første kvarter", wxg:"Voksende måne", full:"Fullmåne", wng:"Minkende måne", lq:"Siste kvarter", wnc:"Minkende månesigd"},
   th: {new:"จันทร์ดับ", wxc:"จันทร์เสี้ยวข้างขึ้น", fq:"จันทร์ครึ่งดวงข้างขึ้น", wxg:"จันทร์ค่อนดวงข้างขึ้น", full:"จันทร์เต็มดวง", wng:"จันทร์ค่อนดวงข้างแรม", lq:"จันทร์ครึ่งดวงข้างแรม", wnc:"จันทร์เสี้ยวข้างแรม"}
 };
 const CITY_TH = {"Oslo": "ออสโล", "Longyearbyen (Svalbard)": "ลองเยียร์เบียน (สฟาลบาร์)", "Reykjavík": "เรคยาวิก", "Stockholm": "สตอกโฮล์ม", "London": "ลอนดอน", "Paris": "ปารีส", "Berlin": "เบอร์ลิน", "Madrid": "มาดริด", "Rome": "โรม", "Athens": "เอเธนส์", "Istanbul": "อิสตันบูล", "Moscow": "มอสโก", "New York": "นิวยอร์ก", "Toronto": "โทรอนโต", "Chicago": "ชิคาโก", "Denver": "เดนเวอร์", "Los Angeles": "ลอสแอนเจลิส", "Vancouver": "แวนคูเวอร์", "Anchorage": "แองเคอเรจ", "Mexico City": "เม็กซิโกซิตี", "Bogotá": "โบโกตา", "Lima": "ลิมา", "São Paulo": "เซาเปาลู", "Rio de Janeiro": "รีโอเดจาเนโร", "Santiago": "ซานติอาโก", "Buenos Aires": "บัวโนสไอเรส", "Cairo": "ไคโร", "Casablanca": "คาซาบลังกา", "Lagos": "ลากอส", "Nairobi": "ไนโรบี", "Johannesburg": "โจฮันเนสเบิร์ก", "Cape Town": "เคปทาวน์", "Dubai": "ดูไบ", "Mumbai": "มุมไบ", "Delhi": "เดลี", "Bangkok": "กรุงเทพฯ", "Chiang Mai": "เชียงใหม่", "Phuket": "ภูเก็ต", "Singapore": "สิงคโปร์", "Jakarta": "จาการ์ตา", "Hong Kong": "ฮ่องกง", "Beijing": "ปักกิ่ง", "Manila": "มะนิลา", "Seoul": "โซล", "Tokyo": "โตเกียว", "Perth": "เพิร์ท", "Sydney": "ซิดนีย์", "Melbourne": "เมลเบิร์น", "Auckland": "ออกแลนด์", "Honolulu": "โฮโนลูลู", "McMurdo Station": "สถานีแมคเมอร์โด", "Narvik": "นาร์วิก", "Tromsø": "ทรอมเซอ", "Bodø": "บูเดอ", "Trondheim": "ทรอนด์เฮม", "Bergen": "แบร์เกน", "Stavanger": "สตาวังเงร์", "Kristiansand": "คริสเตียนแซนด์", "Ålesund": "ออเลซุนด์", "Alta": "อัลตา", "Hammerfest": "ฮัมเมอร์เฟสต์", "Kirkenes": "เคียร์เคเนส", "Lillehammer": "ลิลเลฮัมเมอร์", "Fredrikstad": "เฟรดริกสตัด", "Drammen": "ดรัมเมน", "Gothenburg": "โกเธนเบิร์ก", "Malmö": "มัลเมอ", "Kiruna": "คีรูนา", "Copenhagen": "โคเปนเฮเกน", "Aarhus": "ออร์ฮูส", "Helsinki": "เฮลซิงกิ", "Rovaniemi": "โรวาเนียมิ", "Tórshavn": "ทอร์สเฮาน์", "Tallinn": "ทาลลินน์", "Riga": "ริกา", "Vilnius": "วิลนีอัส", "Warsaw": "วอร์ซอ", "Kraków": "คราคูฟ", "Prague": "ปราก", "Vienna": "เวียนนา", "Budapest": "บูดาเปสต์", "Zürich": "ซูริก", "Geneva": "เจนีวา", "Amsterdam": "อัมสเตอร์ดัม", "Brussels": "บรัสเซลส์", "Dublin": "ดับลิน", "Edinburgh": "เอดินบะระ", "Manchester": "แมนเชสเตอร์", "Lisbon": "ลิสบอน", "Porto": "ปอร์โต", "Barcelona": "บาร์เซโลนา", "Seville": "เซบียา", "Milan": "มิลาน", "Naples": "เนเปิลส์", "Munich": "มิวนิก", "Hamburg": "ฮัมบวร์ค", "Frankfurt": "แฟรงก์เฟิร์ต", "Lyon": "ลียง", "Marseille": "มาร์แซย์", "Nice": "นีซ", "Valletta": "วัลเลตตา", "Bucharest": "บูคาเรสต์", "Sofia": "โซเฟีย", "Belgrade": "เบลเกรด", "Zagreb": "ซาเกร็บ", "Kyiv": "เคียฟ", "Saint Petersburg": "เซนต์ปีเตอร์สเบิร์ก", "Murmansk": "มูร์มันสค์", "Boston": "บอสตัน", "Washington DC": "วอชิงตัน ดี.ซี.", "Miami": "ไมแอมี", "Atlanta": "แอตแลนตา", "Houston": "ฮิวสตัน", "Dallas": "ดัลลัส", "Phoenix": "ฟีนิกซ์", "Las Vegas": "ลาสเวกัส", "San Francisco": "ซานฟรานซิสโก", "Seattle": "ซีแอตเทิล", "Montreal": "มอนทรีออล", "Calgary": "แคลกะรี", "Fairbanks": "แฟร์แบงก์ส", "Yellowknife": "เยลโลว์ไนฟ์", "Nuuk": "นุก", "Havana": "ฮาวานา", "Cancún": "แคนคูน", "Guatemala City": "กัวเตมาลาซิตี", "Panama City": "ปานามาซิตี", "San Juan": "ซานฮวน", "Quito": "กีโต", "Caracas": "การากัส", "Medellín": "เมเดยิน", "Cusco": "กุสโก", "La Paz": "ลาปาซ", "Brasília": "บราซิเลีย", "Salvador": "ซัลวาดอร์", "Manaus": "มาเนาส์", "Montevideo": "มอนเตวิเดโอ", "Asunción": "อาซุนซิออน", "Punta Arenas": "ปุนตาอาเรนัส", "Ushuaia": "อูซัวยา", "Marrakesh": "มาร์ราเกช", "Algiers": "แอลเจียร์", "Tunis": "ตูนิส", "Khartoum": "คาร์ทูม", "Dakar": "ดาการ์", "Accra": "อักกรา", "Abuja": "อาบูจา", "Addis Ababa": "แอดดิสอาบาบา", "Kampala": "กัมปาลา", "Kigali": "คิกาลี", "Kinshasa": "กินชาซา", "Dar es Salaam": "ดาร์เอสซาลาม", "Zanzibar": "แซนซิบาร์", "Luanda": "ลูอันดา", "Windhoek": "วินด์ฮุก", "Durban": "เดอร์บัน", "Antananarivo": "อันตานานาริโว", "Port Louis": "พอร์ตหลุยส์", "Chiang Rai": "เชียงราย", "Sukhothai": "สุโขทัย", "Udon Thani": "อุดรธานี", "Khon Kaen": "ขอนแก่น", "Ubon Ratchathani": "อุบลราชธานี", "Nakhon Ratchasima": "นครราชสีมา", "Ayutthaya": "อยุธยา", "Pattaya": "พัทยา", "Hua Hin": "หัวหิน", "Koh Samui": "เกาะสมุย", "Nakhon Si Thammarat": "นครศรีธรรมราช", "Krabi": "กระบี่", "Hat Yai": "หาดใหญ่", "Vientiane": "เวียงจันทน์", "Phnom Penh": "พนมเปญ", "Siem Reap": "เสียมราฐ", "Hanoi": "ฮานอย", "Ho Chi Minh City": "นครโฮจิมินห์", "Yangon": "ย่างกุ้ง", "Kuala Lumpur": "กัวลาลัมเปอร์", "Bali (Denpasar)": "บาหลี (เดนปาซาร์)", "Cebu": "เซบู", "Taipei": "ไทเป", "Shanghai": "เซี่ยงไฮ้", "Guangzhou": "กวางโจว", "Shenzhen": "เซินเจิ้น", "Chengdu": "เฉิงตู", "Osaka": "โอซากา", "Sapporo": "ซัปโปโร", "Busan": "ปูซาน", "Ulaanbaatar": "อูลานบาตอร์", "Kathmandu": "กาฐมาณฑุ", "Dhaka": "ธากา", "Kolkata": "โกลกาตา", "Chennai": "เจนไน", "Bengaluru": "เบงกาลูรู", "Colombo": "โคลัมโบ", "Malé": "มาเล", "Karachi": "การาจี", "Lahore": "ลาฮอร์", "Kabul": "คาบูล", "Tashkent": "ทาชเคนต์", "Almaty": "อัลมาตี", "Tehran": "เตหะราน", "Baghdad": "แบกแดด", "Amman": "อัมมาน", "Riyadh": "ริยาด", "Mecca": "เมกกะ", "Doha": "โดฮา", "Abu Dhabi": "อาบูดาบี", "Muscat": "มัสกัต", "Novosibirsk": "โนโวซีบีสค์", "Yakutsk": "ยาคุตสค์", "Vladivostok": "วลาดีวอสตอค", "Brisbane": "บริสเบน", "Cairns": "แคนส์", "Canberra": "แคนเบอร์รา", "Adelaide": "แอดิเลด", "Hobart": "โฮบาร์ต", "Darwin": "ดาร์วิน", "Alice Springs": "อลิซสปริงส์", "Wellington": "เวลลิงตัน", "Christchurch": "ไครสต์เชิร์ช", "Queenstown": "ควีนส์ทาวน์", "Port Moresby": "พอร์ตมอร์สบี", "Nouméa": "นูเมอา", "Suva": "ซูวา", "Apia": "อาปีอา", "Papeete (Tahiti)": "ปาเปเอเต (ตาฮีตี)", "Palmer Station": "สถานีพาลเมอร์"};
+const CITY_NO = {"Copenhagen": "København", "Gothenburg": "Göteborg", "Moscow": "Moskva", "Vienna": "Wien", "Prague": "Praha", "Warsaw": "Warszawa", "Lisbon": "Lisboa", "Rome": "Roma", "Athens": "Athen", "Brussels": "Brussel", "Munich": "München", "Naples": "Napoli", "Milan": "Milano", "Seville": "Sevilla", "Geneva": "Genève", "Belgrade": "Beograd", "Bucharest": "Bukarest", "Saint Petersburg": "St. Petersburg", "Marrakesh": "Marrakech", "Algiers": "Alger", "Cairo": "Kairo", "Washington DC": "Washington D.C.", "Havana": "Havanna", "Panama City": "Panama by", "Guatemala City": "Guatemala by", "Mexico City": "Mexico by", "Mecca": "Mekka", "Tehran": "Teheran", "Baghdad": "Bagdad", "Ho Chi Minh City": "Ho Chi Minh-byen", "Cape Town": "Cape Town", "Kyiv": "Kyiv", "McMurdo Station": "McMurdo-stasjonen", "Palmer Station": "Palmer-stasjonen", "Beijing": "Beijing", "Tórshavn": "Tórshavn", "Reykjavík": "Reykjavík", "Singapore": "Singapore", "Sao Paulo": "São Paulo", "Krakow": "Kraków", "Bali (Denpasar)": "Bali (Denpasar)", "Papeete (Tahiti)": "Papeete (Tahiti)"};
+const CONT_NO = {"Europe":"Europa","North America":"Nord-Amerika","South America":"Sør-Amerika","Africa":"Afrika","Asia":"Asia","Oceania":"Oseania","Antarctica":"Antarktis"};
 const CONT_TH = {"Europe":"ยุโรป","North America":"อเมริกาเหนือ","South America":"อเมริกาใต้","Africa":"แอฟริกา","Asia":"เอเชีย","Oceania":"โอเชียเนีย","Antarctica":"แอนตาร์กติกา"};
+const NO16S = ["N","NNØ","NØ","ØNØ","Ø","ØSØ","SØ","SSØ","S","SSV","SV","VSV","V","VNV","NV","NNV"];
+const NO16L = ["nord","nord-nordøst","nordøst","øst-nordøst","øst","øst-sørøst","sørøst","sør-sørøst","sør","sør-sørvest","sørvest","vest-sørvest","vest","vest-nordvest","nordvest","nord-nordvest"];
 const TH8L = ["เหนือ","ตะวันออกเฉียงเหนือ","ตะวันออก","ตะวันออกเฉียงใต้","ใต้","ตะวันตกเฉียงใต้","ตะวันตก","ตะวันตกเฉียงเหนือ"];
 const TH8S = ["น.","ตอ.น.","ตอ.","ตอ.ต.","ต.","ตต.ต.","ตต.","ตต.น."];
 let LANG = "en";
 const MW = (typeof window !== "undefined" && window.MW) || null;
 const slugOf = (name) => name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\(.*?\)/g,"").trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-try { const sl = localStorage.getItem("moonwatch.lang"); if (sl === "en" || sl === "th") LANG = sl; else if (/^th/i.test(navigator.language || "")) LANG = "th"; } catch(e) { if (/^th/i.test((typeof navigator!=="undefined"&&navigator.language)||"")) LANG = "th"; }
+try { const sl = localStorage.getItem("moonwatch.lang"); if (sl === "en" || sl === "th" || sl === "no") LANG = sl; else if (/^(nb|nn|no)\b/i.test(navigator.language || "")) LANG = "no"; else if (/^th/i.test(navigator.language || "")) LANG = "th"; } catch(e) { if (/^th/i.test((typeof navigator!=="undefined"&&navigator.language)||"")) LANG = "th"; }
 function tx(k, v){
   let s = I18N[LANG][k]; if (s === undefined) s = I18N.en[k]; if (s === undefined) return k;
   return v ? s.replace(/\{(\w+)\}/g, (m, n) => (v[n] === undefined ? "" : String(v[n]))) : s;
 }
-if (MW && (MW.lang === "en" || MW.lang === "th")) LANG = MW.lang;
-const LOC = () => LANG === "th" ? "th-TH" : "en-GB";
+if (MW && (MW.lang === "en" || MW.lang === "th" || MW.lang === "no")) LANG = MW.lang;
+const LOC = () => LANG === "th" ? "th-TH" : LANG === "no" ? "nb-NO" : "en-GB";
 const phName = (k) => PHN[LANG][k];
 
 // วันพระ, from published Thai calendars: 2569 = Thai PBS + Kapook, 2570 = Mondeedee + Kapook + Sale Here
@@ -579,10 +666,10 @@ const C16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W",
 const C16L = ["north","north-northeast","northeast","east-northeast","east","east-southeast","southeast","south-southeast","south","south-southwest","southwest","west-southwest","west","west-northwest","northwest","north-northwest"];
 const ci = (az) => Math.round(((az%360)+360)%360/22.5)%16;
 const ci8 = (az) => Math.round(((az%360)+360)%360/45)%8;
-const dS = (az) => LANG === "th" ? TH8S[ci8(az)] : C16[ci(az)];
-const dL = (az) => LANG === "th" ? TH8L[ci8(az)] : C16L[ci(az)];
-const fmt1 = (x) => (Math.round(x*10)/10).toFixed(1);
-const fmtInt = (x) => Math.round(x).toLocaleString("en-GB");
+const dS = (az) => LANG === "th" ? TH8S[ci8(az)] : LANG === "no" ? NO16S[ci(az)] : C16[ci(az)];
+const dL = (az) => LANG === "th" ? TH8L[ci8(az)] : LANG === "no" ? NO16L[ci(az)] : C16L[ci(az)];
+const fmt1 = (x) => { const v = (Math.round(x*10)/10).toFixed(1); return LANG === "no" ? v.replace(".", ",") : v; };
+const fmtInt = (x) => Math.round(x).toLocaleString(LANG === "no" ? "nb-NO" : "en-GB");
 const sgn = (x,dp=1) => (x>=0?"+":"−")+Math.abs(x).toFixed(dp);
 
 // ---------- names ----------
@@ -620,7 +707,7 @@ st.cityIdx = defaultCity();
 setTZ(CITIES[st.cityIdx][3]);
 let obs = makeObs();
 function makeObs(){ const c=CITIES[st.cityIdx]; return new A.Observer(c[1], c[2], 10); }
-const cityLabel = (c) => LANG === "th" ? (CITY_TH[c[0]] || c[0]) : c[0];
+const cityLabel = (c) => LANG === "th" ? (CITY_TH[c[0]] || c[0]) : LANG === "no" ? (CITY_NO[c[0]] || c[0]) : c[0];
 const cityName = () => cityLabel(CITIES[st.cityIdx]).replace(/ \([^)]*\)$/,"");
 const southern = () => CITIES[st.cityIdx][1] < 0;
 
@@ -629,13 +716,13 @@ function buildCities(){
   sel.innerHTML = "";
   const groups = {};
   CITIES.forEach((c,i)=>{
-    if (!groups[c[4]]) { const g = document.createElement("optgroup"); g.label = LANG === "th" ? (CONT_TH[c[4]] || c[4]) : c[4]; groups[c[4]] = g; sel.appendChild(g); }
+    if (!groups[c[4]]) { const g = document.createElement("optgroup"); g.label = LANG === "th" ? (CONT_TH[c[4]] || c[4]) : LANG === "no" ? (CONT_NO[c[4]] || c[4]) : c[4]; groups[c[4]] = g; sel.appendChild(g); }
     const o = document.createElement("option"); o.value = i; o.textContent = cityLabel(c); groups[c[4]].appendChild(o);
   });
   sel.value = st.cityIdx;
 }
 buildCities();
-const pagePath = (cityIdx, lang) => (lang === "th" ? "/th" : "") + (cityIdx == null ? "/" : "/" + slugOf(CITIES[cityIdx][0]) + "/");
+const pagePath = (cityIdx, lang) => (lang === "th" ? "/th" : lang === "no" ? "/no" : "") + (cityIdx == null ? "/" : "/" + slugOf(CITIES[cityIdx][0]) + "/");
 sel.addEventListener("change", ()=>{
   st.cityIdx = +sel.value;
   try { localStorage.setItem("moonwatch.city", CITIES[st.cityIdx][0]); } catch(e) {}
@@ -1185,7 +1272,8 @@ function writeSlow(f, s){
 }
 
 function writeWanPhra(now){
-  const card = $("#wpCard");
+  const card = document.getElementById("wpCard");
+  if (!card) return;
   if (LANG !== "th") { card.hidden = true; return; }
   const today = fBkkYmd.format(now);
   const idx = WP.findIndex(w => w[0] >= today);
@@ -1510,10 +1598,11 @@ function applyStatic(){
   for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = tx(el.getAttribute("data-i18n-title"));
   $("#langEn").setAttribute("aria-pressed", LANG==="en" ? "true" : "false");
   $("#langTh").setAttribute("aria-pressed", LANG==="th" ? "true" : "false");
+  $("#langNo").setAttribute("aria-pressed", LANG==="no" ? "true" : "false");
   oLabels.moon.textContent = tx("olMoon"); oLabels.earth.textContent = tx("olEarth"); oLabels.sun.textContent = tx("olSun");
 }
 function setLang(l){
-  if (l !== "en" && l !== "th") return;
+  if (l !== "en" && l !== "th" && l !== "no") return;
   try { localStorage.setItem("moonwatch.lang", l); } catch(e) {}
   if (MW) { location.href = pagePath(MW.city ? st.cityIdx : null, l); return; }
   LANG = l;
@@ -1523,6 +1612,7 @@ function setLang(l){
 }
 $("#langEn").addEventListener("click", ()=>setLang("en"));
 $("#langTh").addEventListener("click", ()=>setLang("th"));
+$("#langNo").addEventListener("click", ()=>setLang("no"));
 applyStatic(); setTZ(TZ); setText("tempoV", fmtTempo(st.speedH)); playLabels(); fsLabels();
 
 for (const r of document.querySelectorAll("tr[data-t]")) if (+r.getAttribute("data-t") < Date.now()) r.classList.add("is-past");
