@@ -323,6 +323,46 @@ if (MW && (MW.lang === "en" || MW.lang === "th")) LANG = MW.lang;
 const LOC = () => LANG === "th" ? "th-TH" : "en-GB";
 const phName = (k) => PHN[LANG][k];
 
+// วันพระ, from published Thai calendars: 2569 = Thai PBS + Kapook, 2570 = Mondeedee + Kapook + Sale Here
+// [date, ขึ้น(k)/แรม(r), ค่ำ, เดือน label, special-day key or ""]
+const WP = [
+["2026-01-03","k",15,"ยี่",""],["2026-01-11","r",8,"ยี่",""],["2026-01-18","r",15,"ยี่",""],["2026-01-26","k",8,"3",""],
+["2026-02-02","k",15,"3",""],["2026-02-10","r",8,"3",""],["2026-02-16","r",14,"3",""],["2026-02-24","k",8,"4",""],
+["2026-03-03","k",15,"4","makha"],["2026-03-11","r",8,"4",""],["2026-03-18","r",15,"4",""],["2026-03-26","k",8,"5",""],
+["2026-04-02","k",15,"5",""],["2026-04-10","r",8,"5",""],["2026-04-16","r",14,"5",""],["2026-04-24","k",8,"6",""],
+["2026-05-01","k",15,"6",""],["2026-05-09","r",8,"6",""],["2026-05-16","r",15,"6",""],["2026-05-24","k",8,"7",""],
+["2026-05-31","k",15,"7","visakha"],["2026-06-08","r",8,"7","atthami"],["2026-06-14","r",14,"7",""],["2026-06-22","k",8,"8",""],
+["2026-06-29","k",15,"8",""],["2026-07-07","r",8,"8",""],["2026-07-14","r",15,"8",""],["2026-07-22","k",8,"8 หลัง",""],
+["2026-07-29","k",15,"8 หลัง","asalha"],["2026-08-06","r",8,"8 หลัง",""],["2026-08-13","r",15,"8 หลัง",""],["2026-08-21","k",8,"9",""],
+["2026-08-28","k",15,"9",""],["2026-09-05","r",8,"9",""],["2026-09-11","r",14,"9",""],["2026-09-19","k",8,"10",""],
+["2026-09-26","k",15,"10",""],["2026-10-04","r",8,"10",""],["2026-10-11","r",15,"10",""],["2026-10-19","k",8,"11",""],
+["2026-10-26","k",15,"11","okphansa"],["2026-11-03","r",8,"11",""],["2026-11-09","r",14,"11",""],["2026-11-17","k",8,"12",""],
+["2026-11-24","k",15,"12","loykrathong"],["2026-12-02","r",8,"12",""],["2026-12-09","r",15,"12",""],["2026-12-17","k",8,"อ้าย",""],
+["2026-12-24","k",15,"อ้าย",""],
+["2027-01-01","r",8,"อ้าย",""],["2027-01-07","r",14,"อ้าย",""],["2027-01-15","k",8,"ยี่",""],["2027-01-22","k",15,"ยี่",""],
+["2027-01-30","r",8,"ยี่",""],["2027-02-06","r",15,"ยี่",""],["2027-02-14","k",8,"3",""],["2027-02-21","k",15,"3","makha"],
+["2027-03-01","r",8,"3",""],["2027-03-07","r",14,"3",""],["2027-03-15","k",8,"4",""],["2027-03-22","k",15,"4",""],
+["2027-03-30","r",8,"4",""],["2027-04-06","r",15,"4",""],["2027-04-14","k",8,"5",""],["2027-04-21","k",15,"5",""],
+["2027-04-29","r",8,"5",""],["2027-05-05","r",14,"5",""],["2027-05-13","k",8,"6",""],["2027-05-20","k",15,"6","visakha"],
+["2027-05-28","r",8,"6","atthami"],["2027-06-04","r",15,"6",""],["2027-06-12","k",8,"7",""],["2027-06-19","k",15,"7",""],
+["2027-06-27","r",8,"7",""],["2027-07-03","r",14,"7",""],["2027-07-11","k",8,"8",""],["2027-07-18","k",15,"8","asalha"],
+["2027-07-26","r",8,"8",""],["2027-08-02","r",15,"8",""],["2027-08-10","k",8,"9",""],["2027-08-17","k",15,"9",""],
+["2027-08-25","r",8,"9",""],["2027-08-31","r",14,"9",""],["2027-09-08","k",8,"10",""],["2027-09-15","k",15,"10",""],
+["2027-09-23","r",8,"10",""],["2027-09-30","r",15,"10",""],["2027-10-08","k",8,"11",""],["2027-10-15","k",15,"11","okphansa"],
+["2027-10-23","r",8,"11",""],["2027-10-29","r",14,"11",""],["2027-11-06","k",8,"12",""],["2027-11-13","k",15,"12","loykrathong"],
+["2027-11-21","r",8,"12",""],["2027-11-28","r",15,"12",""],["2027-12-06","k",8,"อ้าย",""],["2027-12-13","k",15,"อ้าย",""],
+["2027-12-21","r",8,"อ้าย",""],["2027-12-27","r",14,"อ้าย",""]
+];
+// Buddhist days that are not วันพระ themselves
+const WP_EXTRA = [["2026-07-30","khaophansa"],["2027-07-19","khaophansa"],["2027-10-16","tak"]];
+
+const WP_SPECIAL = {makha:"วันมาฆบูชา", visakha:"วันวิสาขบูชา", atthami:"วันอัฏฐมีบูชา", asalha:"วันอาสาฬหบูชา", khaophansa:"วันเข้าพรรษา", okphansa:"วันออกพรรษา", loykrathong:"วันลอยกระทง", tak:"วันตักบาตรเทโว"};
+const WP_SET = new Set(WP.map(w => w[0]));
+const wpLabel = (w) => (w[1]==="k" ? "ขึ้น " : "แรม ") + w[2] + " ค่ำ เดือน" + (/^\d/.test(w[3]) ? " " : "") + w[3];
+const fBkkYmd = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"});
+const fBkkLong = new Intl.DateTimeFormat("th-TH",{timeZone:"Asia/Bangkok",weekday:"long",day:"numeric",month:"long",year:"numeric"});
+const fBkkShort = new Intl.DateTimeFormat("th-TH",{timeZone:"Asia/Bangkok",weekday:"short",day:"numeric",month:"short"});
+const ymdNoon = (ymd) => new Date(ymd+"T05:00:00Z");   // 12:00 in Bangkok
 // ---------- formatting ----------
 // formatters follow the selected city's time zone
 let TZ = "Europe/Oslo", fTime, fTimeS, fDay, fDayY, fParts, fZone, fWd;
@@ -962,10 +1002,31 @@ function writeSlow(f, s){
   const why = tx(f.elong < 20 ? "why1" : f.elong < 80 ? "why2" : f.elong < 100 ? "why3" : f.elong < 172 ? "why4" : "why5");
   setText("orbitText", tx("orbitText", {e, why}));
 
+  writeWanPhra(now);
   // the 30-night strip
   writeNights(now);
 }
 
+function writeWanPhra(now){
+  const card = $("#wpCard");
+  if (LANG !== "th") { card.hidden = true; return; }
+  const today = fBkkYmd.format(now);
+  const idx = WP.findIndex(w => w[0] >= today);
+  if (idx < 0) { card.hidden = true; return; }
+  card.hidden = false;
+  const w = WP[idx], days = Math.round((Date.parse(w[0]) - Date.parse(today)) / DAY);
+  setText("wpWhen", days === 0 ? "วันนี้วันพระ" : days === 1 ? "พรุ่งนี้วันพระ" : "อีก " + days + " วัน");
+  setText("wpDate", fBkkLong.format(ymdNoon(w[0])) + " · " + wpLabel(w));
+  const tags = [];
+  tags.push('<span class="wp-tag' + (w[2] >= 14 ? ' big">วันพระใหญ่' : '">วันพระเล็ก') + '</span>');
+  if (w[4]) tags.push('<span class="wp-tag special">' + WP_SPECIAL[w[4]] + '</span>');
+  const extra = WP_EXTRA.find(x => x[0] > today && x[0] <= (WP[idx+1]||w)[0]);
+  if (extra) tags.push('<span class="wp-tag">' + WP_SPECIAL[extra[1]] + ' ' + fBkkShort.format(ymdNoon(extra[0])) + '</span>');
+  setHTML("wpTags", tags.join(""));
+  const rest = WP.slice(idx+1, idx+6);
+  setHTML("wpList", rest.map(x => '<li' + (x[4] ? ' class="sp"' : '') + '><span>' + fBkkShort.format(ymdNoon(x[0])) + (x[4] ? ' · ' + WP_SPECIAL[x[4]] : (x[2] >= 14 ? ' · วันพระใหญ่' : '')) + '</span><span>' + wpLabel(x) + '</span></li>').join("") || '<li><span>—</span><span></span></li>');
+  setText("wpNote", "วันพระตามปฏิทินไทย (เวลาประเทศไทย) ใช้ได้กับทุกเมืองที่เลือก");
+}
 function writeNights(now){
   const p0 = parts(new Date());
   const key = p0.y+"-"+p0.m+"-"+p0.d+"|"+st.cityIdx+"|"+LANG;
@@ -982,6 +1043,7 @@ function writeNights(now){
       const cv = document.createElement("canvas"); drawPhaseIcon(cv, lon, 34);
       b.innerHTML = '<span class="wd">'+(i===0?tx("todayCap"):fWd.format(noon))+'</span>';
       b.appendChild(cv);
+      if (LANG === "th" && WP_SET.has(q.y + "-" + String(q.m).padStart(2,"0") + "-" + String(q.d).padStart(2,"0"))) b.insertAdjacentHTML("beforeend", '<span class="wp-dot">วันพระ</span>');
       b.insertAdjacentHTML("beforeend",'<span class="dd num">'+q.d+'.'+q.m+'.</span><span class="pc num">'+Math.round(fr*100)+'%</span>');
       b.setAttribute("aria-label", tx("nightAria",{d:fDay.format(at), p:Math.round(fr*100)}));
       b.addEventListener("click",()=>{ jumpTo(+b.dataset.t); });
