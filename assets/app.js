@@ -1,0 +1,1292 @@
+// Core lunar geometry used by the page. Runs in the browser (global Astronomy) and in Node for testing.
+(function (root) {
+  const DEG = Math.PI / 180;
+  const KM_PER_AU = 149597870.7;
+
+  function makeCore(A) {
+    const V = (x, y, z, t) => new A.Vector(x, y, z, t);
+    const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+    const len = (a) => Math.hypot(a.x, a.y, a.z);
+    const norm = (a) => { const l = len(a); return { x: a.x / l, y: a.y / l, z: a.z / l }; };
+    const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
+    const scale = (a, s) => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+    const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+    // HOR (x=north, y=west, z=zenith) -> three.js (x=east, y=up, z=south)
+    const hor3 = (v) => [-v.y, v.z, -v.x];
+
+    // Moon body frame (x = prime meridian, y = 90°E, z = north pole) in EQJ.
+    function moonBodyFrame(t) {
+      const ax = A.RotationAxis(A.Body.Moon, t);
+      const N = ax.north;
+      const node = norm({ x: -N.y, y: N.x, z: 0 });
+      const W = ax.spin * DEG;
+      const xb = add(scale(node, Math.cos(W)), scale(cross(N, node), Math.sin(W)));
+      const yb = cross(N, xb);
+      return { xb, yb, zb: { x: N.x, y: N.y, z: N.z } };
+    }
+
+    // Everything the 3D "your view" scene needs, in three.js world coordinates.
+    function skyGeometry(date, obs) {
+      const t = A.MakeTime(date);
+      const R = A.Rotation_EQJ_HOR(t, obs);
+      const rot = (v) => hor3(A.RotateVector(R, V(v.x, v.y, v.z, t)));
+      const geoMoon = A.GeoMoon(t);
+      const ov = A.ObserverVector(t, obs, false);
+      const topo = sub(geoMoon, ov);
+      const geoSun = A.GeoVector(A.Body.Sun, t, true);
+      const sunFromMoon = norm(sub(geoSun, geoMoon));
+      const f = moonBodyFrame(t);
+      return {
+        view: rot(norm(topo)),            // observer -> Moon
+        light: rot(sunFromMoon),          // Moon -> Sun
+        celestialNorth: rot({ x: 0, y: 0, z: 1 }),
+        bodyX: rot(f.xb), bodyY: rot(f.yb), bodyZ: rot(f.zb),
+        topoKm: len(topo) * KM_PER_AU,
+      };
+    }
+
+    // Geocentric layout for the orbit scene, in ecliptic J2000 -> three (x=ecl x, y=ecl z, z=-ecl y).
+    function orbitGeometry(date) {
+      const t = A.MakeTime(date);
+      const R = A.Rotation_EQJ_ECL();
+      const e3 = (v) => { const r = A.RotateVector(R, V(v.x, v.y, v.z, t)); return [r.x, r.z, -r.y]; };
+      const gm = A.GeoMoon(t);
+      const gs = A.GeoVector(A.Body.Sun, t, true);
+      const mf = moonBodyFrame(t);
+      const ea = A.RotationAxis(A.Body.Earth, t);
+      const EN = ea.north, node = norm({ x: -EN.y, y: EN.x, z: 0 }), W = ea.spin * DEG;
+      const exb = add(scale(node, Math.cos(W)), scale(cross(EN, node), Math.sin(W)));
+      const eyb = cross(EN, exb);
+      return {
+        moonKm: len(gm) * KM_PER_AU,
+        moonDir: e3(norm(gm)),
+        sunDir: e3(norm(gs)),
+        moonX: e3(mf.xb), moonY: e3(mf.yb), moonZ: e3(mf.zb),
+        earthX: e3(exb), earthY: e3(eyb), earthZ: e3(EN),
+      };
+    }
+
+    return { skyGeometry, orbitGeometry, moonBodyFrame, KM_PER_AU };
+  }
+
+  root.makeMoonCore = makeCore;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+
+(function(){
+"use strict";
+const $ = (s) => document.querySelector(s);
+const DEG = Math.PI/180, DAY = 86400000, HOUR = 3600000, MIN = 60000;
+const MOON_TEX = "/moon.jpg";
+const EARTH_TEX = "/earth.jpg";
+const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// name, latitude, longitude, IANA time zone, continent
+const CITIES = [
+  ["Oslo",59.9139,10.7522,"Europe/Oslo","Europe"],
+  ["Longyearbyen (Svalbard)",78.2232,15.6267,"Arctic/Longyearbyen","Europe"],
+  ["Reykjavík",64.1466,-21.9426,"Atlantic/Reykjavik","Europe"],
+  ["Stockholm",59.3293,18.0686,"Europe/Stockholm","Europe"],
+  ["London",51.5074,-0.1278,"Europe/London","Europe"],
+  ["Paris",48.8566,2.3522,"Europe/Paris","Europe"],
+  ["Berlin",52.5200,13.4050,"Europe/Berlin","Europe"],
+  ["Madrid",40.4168,-3.7038,"Europe/Madrid","Europe"],
+  ["Rome",41.9028,12.4964,"Europe/Rome","Europe"],
+  ["Athens",37.9838,23.7275,"Europe/Athens","Europe"],
+  ["Istanbul",41.0082,28.9784,"Europe/Istanbul","Europe"],
+  ["Moscow",55.7558,37.6173,"Europe/Moscow","Europe"],
+  ["New York",40.7128,-74.0060,"America/New_York","North America"],
+  ["Toronto",43.6532,-79.3832,"America/Toronto","North America"],
+  ["Chicago",41.8781,-87.6298,"America/Chicago","North America"],
+  ["Denver",39.7392,-104.9903,"America/Denver","North America"],
+  ["Los Angeles",34.0522,-118.2437,"America/Los_Angeles","North America"],
+  ["Vancouver",49.2827,-123.1207,"America/Vancouver","North America"],
+  ["Anchorage",61.2181,-149.9003,"America/Anchorage","North America"],
+  ["Mexico City",19.4326,-99.1332,"America/Mexico_City","North America"],
+  ["Bogotá",4.7110,-74.0721,"America/Bogota","South America"],
+  ["Lima",-12.0464,-77.0428,"America/Lima","South America"],
+  ["São Paulo",-23.5505,-46.6333,"America/Sao_Paulo","South America"],
+  ["Rio de Janeiro",-22.9068,-43.1729,"America/Sao_Paulo","South America"],
+  ["Santiago",-33.4489,-70.6693,"America/Santiago","South America"],
+  ["Buenos Aires",-34.6037,-58.3816,"America/Argentina/Buenos_Aires","South America"],
+  ["Cairo",30.0444,31.2357,"Africa/Cairo","Africa"],
+  ["Casablanca",33.5731,-7.5898,"Africa/Casablanca","Africa"],
+  ["Lagos",6.5244,3.3792,"Africa/Lagos","Africa"],
+  ["Nairobi",-1.2921,36.8219,"Africa/Nairobi","Africa"],
+  ["Johannesburg",-26.2041,28.0473,"Africa/Johannesburg","Africa"],
+  ["Cape Town",-33.9249,18.4241,"Africa/Johannesburg","Africa"],
+  ["Dubai",25.2048,55.2708,"Asia/Dubai","Asia"],
+  ["Mumbai",19.0760,72.8777,"Asia/Kolkata","Asia"],
+  ["Delhi",28.6139,77.2090,"Asia/Kolkata","Asia"],
+  ["Bangkok",13.7563,100.5018,"Asia/Bangkok","Asia"],
+  ["Chiang Mai",18.7883,98.9853,"Asia/Bangkok","Asia"],
+  ["Phuket",7.8804,98.3923,"Asia/Bangkok","Asia"],
+  ["Singapore",1.3521,103.8198,"Asia/Singapore","Asia"],
+  ["Jakarta",-6.2088,106.8456,"Asia/Jakarta","Asia"],
+  ["Hong Kong",22.3193,114.1694,"Asia/Hong_Kong","Asia"],
+  ["Beijing",39.9042,116.4074,"Asia/Shanghai","Asia"],
+  ["Manila",14.5995,120.9842,"Asia/Manila","Asia"],
+  ["Seoul",37.5665,126.9780,"Asia/Seoul","Asia"],
+  ["Tokyo",35.6762,139.6503,"Asia/Tokyo","Asia"],
+  ["Perth",-31.9505,115.8605,"Australia/Perth","Oceania"],
+  ["Sydney",-33.8688,151.2093,"Australia/Sydney","Oceania"],
+  ["Melbourne",-37.8136,144.9631,"Australia/Melbourne","Oceania"],
+  ["Auckland",-36.8485,174.7633,"Pacific/Auckland","Oceania"],
+  ["Honolulu",21.3069,-157.8583,"Pacific/Honolulu","Oceania"],
+  ["McMurdo Station",-77.8463,166.6682,"Antarctica/McMurdo","Antarctica"]
+];
+
+// ---------- language ----------
+const I18N = {
+  en: {
+    brandSub:"Live Moon tracker", skyOver:"Sky over", cityAria:"City", langAria:"Language",
+    vSky:"As in your sky", vNorth:"North up", tempo:"Tempo", tempoAria:"Animation speed", loading:"Loading the Moon…",
+    backLive:"Back to live", phaseNow:"Moon phase now", illuminated:"illuminated",
+    tkNew:"New", tkFq:"First qtr", tkFull:"Full", tkLq:"Last qtr",
+    visibility:"Visibility", moonrise:"Moonrise", moonset:"Moonset", highest:"Highest",
+    playMonth:"Play the month", pause:"Pause", play:"Play", playAria:"Play the lunar month",
+    sp1:"1 h/s", sp6:"6 h/s", sp24:"1 day/s", endPast:"−15 days", endNow:"now", endFut:"+45 days", scrubAria:"Move through time",
+    chartIntro:"Height of the Moon above the horizon hour by hour. The background shows daylight and darkness, so you can see when the Moon is up in a dark sky.",
+    lgDay:"Day", lgTwi:"Twilight", lgNaut:"Nautical twilight", lgDark:"Dark", lgMoon:"Moon", lgSun:"Sun",
+    comingPhases:"Coming phases", phaseCal:"Phase calendar",
+    nights30:"Next 30 nights · at 22:00", howFull:"How full, night by night", tapNight:"Tap a night to jump the 3D view and all the numbers to that evening.",
+    whyLooks:"Why it looks like this", sem:"Sun, Earth and Moon now", focEarth:"Earth", focMoon:"Moon", zoomIn:"Zoom in", zoomOut:"Zoom out",
+    almanac:"Almanac", moonData:"Moon data",
+    foot:"Positions are calculated live in your browser with Astronomy Engine by Don Cross, accurate to well under a minute of time. All times are local time in the selected city, including daylight saving time. Rise and set times assume a flat horizon at sea level, so mountains and tall buildings will delay moonrise and bring moonset forward. The 3D view uses the real tilt, libration and lighting for the selected place; the orbit view is not to scale.",
+    fullScreen:"Full screen", close:"Close", fsMoonAria:"Show the Moon full screen", fsOrbitAria:"Show Sun, Earth and Moon full screen", fsCloseAria:"Close full screen",
+    olMoon:"Moon", olEarth:"Earth", olSun:"Sunlight →", zenithUp:"ZENITH UP", northUp:"NORTH UP", compassN:"N",
+    today:"today", tomorrow:"tomorrow", yesterday:"yesterday", todayCap:"Today", in:"in {d}", ago:"{d} ago",
+    waxNo:"Waxing, growing each night · seen from {city}", wanNo:"Waning, shrinking each night · seen from {city}",
+    illumSide:"of the side facing Earth is in sunlight",
+    cycleMeta:"Day {age} of 29.5{since} · lunation {n}", cycleSince:" since the new moon on {d}",
+    exactFull:"Exactly full <b>{d}</b>", wasFull:"Was exactly full <b>{d}</b>",
+    subNearest:"{day} at {time}. Next new moon {day2}, {d2}.", fullIn:"Full moon <b>{d}</b>",
+    beforeThat:" Before that: {ph} {day} at {time}.", subFull:"{day} at {time} {zone}.{after}",
+    ocLine:"<b>{pct}% lit</b> · the Moon is {e}° from the Sun as seen from Earth · {km} km from {city} · drag to turn, pinch or scroll to zoom",
+    fsLine:"<b>{pct}% lit</b> · {lead} · {city} {pos}", altUp:"{a}° up", belowHorizon:"below horizon",
+    capSky:"<strong>{city}, {time}</strong> · tilted exactly as it looks in your sky · {alt}° up, {dir}",
+    capNorth:"<strong>{city}, {time}</strong> · north up, as in a telescope chart · {alt}° up, {dir}",
+    clockLive:"Live · ", clockTravel:"Time travel · ", live:"Live", ahead:"{d} ahead of now",
+    altJust:"just above the {dir} horizon", altAbove:"{a}° above the {dir} horizon",
+    shNew:"new Moon", shCres:"crescent Moon", shHalf:"half-lit Moon", shFull:"full Moon", shNearly:"nearly full Moon", shGib:"gibbous Moon",
+    hGlare:"Hidden by the Sun's glare", tGlare:"The Moon is only {e}° from the Sun in the sky, so it can't be seen. It will return as a thin crescent in a few days.",
+    hVisible:"Visible now", tVisible:"The {shape} is <b>{alt}</b> and the sky is {dark}", darkFull:"dark.", darkEnough:"dark enough to see it well.",
+    hTwilight:"Up in twilight", tTwilight:"The {shape} is <b>{alt}</b> in a twilight sky.",
+    hDay:"Up in daylight", tDay:"The {shape} is <b>{alt}</b>. Look for a pale disc in the daytime sky.",
+    tLow:"It is low, so mountains or buildings can block it.", tUpAll:"It stays above the horizon for the next two days without setting.",
+    tSets:"It sets at <b>{time}</b> {day}in the {dir} ({d}).",
+    hBelow:"Below the horizon", tDownAll:"From {city} it does not rise at all in the next two days. This happens far from the equator when the Moon is far {ns} in the sky.",
+    north:"north", south:"south",
+    tRises:"It rises at <b>{time}</b> {day} in the {dir} ({d}){when}", riseDark:", in a dark sky.", riseTwi:", in twilight.", riseDay:", in daylight.",
+    tThrough:"The 3D view shows how it would look if you could see through the Earth.",
+    pillUp:"{a}° up", pillDown:"{a}° below",
+    alreadyUp:"Already up", noRise:"Doesn't rise", alreadyDown:"Already down", noSet:"Doesn't set", next48:"next 48 h", stillBelow:"still below horizon",
+    skyTitle:"The Moon's path over {city}", next24:"Next 24 hours", around24:"24 hours around {d}", now:"now",
+    rangeNowNight:"now and on through the night", rangeFromNight:"from {from} and on through the night", rangeFromTo:"{from} until {to}",
+    bestView:"<b>Best view: {range}.</b> The Moon is up in a dark sky then, highest at {time}, {alt}° above the {dir} horizon.",
+    bestNoDark:"<b>No dark-sky view in the next 24 hours.</b> The Moon is only up in daylight or twilight, highest at {time} ({alt}° {dir}).",
+    bestNone:"<b>The Moon stays below the horizon for the next 24 hours</b> as seen from {city}.",
+    evUp:"{a}° up in {city}", evBelow:"below horizon then",
+    aIllum:"Illumination", aIllumD:"brightness magnitude {m}", aPhase:"Phase angle", aPhaseD:"Sun–Moon–Earth angle; 0° is full",
+    aElong:"Distance from Sun in the sky", aElongD:"elongation; 180° is opposite the Sun",
+    aAge:"Moon age", days:"{x} days", aAgeD:"new moon was {d} {time}", aLun:"Lunation number", aLunD:"Brown series, lunation 1 began Jan 1923",
+    aDist:"Distance", km:"{x} km", kmFrom:"{x} km from {city}", aSize:"Apparent size", aSizeD:"arcminutes across",
+    aPos:"Position", aPosD:"altitude · azimuth from {city}", aDec:"Declination", aDecSets:"never sets here at this declination", aDecRises:"never rises here at this declination", aDecD:"how far north the Moon is in the sky",
+    aCon:"Constellation", aConD:"the stars behind the Moon", aLib:"Libration", aLibV:"lat {a}° · lon {b}°", aLibD:"{pole} and {limb} limb tipped toward us",
+    poleS:"south pole", poleN:"north pole", limbW:"western", limbE:"eastern",
+    aPeri:"Next perigee (closest)", aApo:"Next apogee (farthest)", aEcl:"Next lunar eclipse",
+    ecl_penumbral:"penumbral (faint shading only)", ecl_partial:"partial", ecl_total:"total", ecl_annular:"annular",
+    eclUp:"Moon {a}° up in {city}", eclDown:"Moon below horizon in {city}",
+    aSun:"Sun", sDay:"daylight", sCivil:"civil twilight", sNaut:"nautical twilight", sAstro:"astronomical twilight", sNight:"dark night",
+    why1:"The Moon is passing between Earth and the Sun. Its lit half faces away from us, so we see little or nothing of it.",
+    why2:"The Moon is off to one side of the Sun, so we see a thin edge of its lit half: a crescent.",
+    why3:"The Moon is at a right angle to the Sun as seen from Earth, so we see exactly half of its lit half: a half moon.",
+    why4:"The Moon is on the far side of Earth from the Sun, so most of its lit half faces us.",
+    why5:"The Moon is almost exactly opposite the Sun, so its whole lit half faces us: full moon.",
+    orbitText:"The Sun always lights one half of the Moon. Right now the Moon is {e}° from the Sun as seen from Earth. {why} Drag to turn the view, and use + and − (or pinch or scroll) to zoom. Choose Moon to zoom in on the Moon itself.",
+    chartHorizon:"horizon", chartNow:"now", chartRise:"rise ", chartSet:"set ", chartAria:"Moon altitude over the next 24 hours",
+    nightAria:"{d} 22:00, {p} percent lit",
+    tMin:"{x} min/s", tH:"{x} h/s", tDay1:"{x} day/s", tDays:"{x} days/s",
+    dD:"{d} days", dDH:"{d} d {h} h", dHM:"{h} h {m} min", dM:"{m} min",
+    h1Root:"Moon phase today", h1City:"Moon phase today in {city}",
+    titleRoot:"Moon Phase Today – Live 3D Moon Tracker | Moonwatch", titleCity:"Moon Phase Today in {city} – Moonrise, Moonset & Full Moon | Moonwatch",
+    descRoot:"Today's moon phase live in 3D: how full the Moon is, moonrise and moonset, the next full moon and where to see it, for 51 cities worldwide. Free, in English and Thai.",
+    descCity:"Moon phase today in {city}: live illumination, moonrise and moonset in local time, the next full moon and the best time to see the Moon, shown in 3D.",
+    faqEyebrow:"Moon questions", faqTitle:"About the Moon", otherCities:"Moon phase today in other cities", citiesEyebrow:"51 cities", langLink:"อ่านหน้านี้เป็นภาษาไทย",
+    q1:"What is the Moon's phase today?", a1:"The Moon's phase is how much of its sunlit half we can see from Earth. Moonwatch calculates it live for the selected city, shows the exact percentage illuminated, and turns the 3D Moon to match what you see in your own sky. A full cycle from new moon to new moon takes about 29.5 days.",
+    q2:"When is the next full moon?", a2:"A full moon comes about every 29.5 days, when the Moon is opposite the Sun in the sky. The countdown near the top of this page shows the exact date and local time of the next full moon, and the phase calendar lists the coming new moon, first quarter, full moon and last quarter.",
+    q3:"What are the eight phases of the Moon?", a3:"New moon, waxing crescent, first quarter, waxing gibbous, full moon, waning gibbous, last quarter and waning crescent. Waxing means the lit part grows each night; waning means it shrinks.",
+    q4:"Why does the Moon rise at a different time every day?", a4:"The Moon moves about 13° along its orbit each day, so the Earth has to turn a little further before the Moon comes up again. On average moonrise is about 50 minutes later each day, but it varies a lot with the season and with how far north or south you are.",
+    q5:"Why does the Moon look upside down in the southern hemisphere?", a5:"People south of the equator see the Moon from the other side of the Earth, so it appears turned by about 180 degrees: a waxing Moon is lit on the left instead of the right. Moonwatch shows the Moon tilted exactly as it looks from the city you choose.",
+    q6:"Can I see the Moon in daylight?", a6:"Yes. The Moon is above the horizon for about half of every day, and for much of the month part of that time falls in daylight. It is easiest to spot as a pale disc in the afternoon around first quarter and in the morning around last quarter."
+  },
+  th: {
+    brandSub:"ติดตามดวงจันทร์สด", skyOver:"ท้องฟ้าเหนือ", cityAria:"เมือง", langAria:"ภาษา",
+    vSky:"ตามที่เห็นบนฟ้า", vNorth:"ทิศเหนืออยู่บน", tempo:"ความเร็ว", tempoAria:"ความเร็วแอนิเมชัน", loading:"กำลังโหลดดวงจันทร์…",
+    backLive:"กลับสู่เวลาจริง", phaseNow:"ข้างจันทร์ตอนนี้", illuminated:"สว่าง",
+    tkNew:"จันทร์ดับ", tkFq:"ขึ้นครึ่งดวง", tkFull:"เต็มดวง", tkLq:"แรมครึ่งดวง",
+    visibility:"การมองเห็น", moonrise:"ดวงจันทร์ขึ้น", moonset:"ดวงจันทร์ตก", highest:"สูงสุด",
+    playMonth:"เล่นทั้งเดือน", pause:"หยุด", play:"เล่น", playAria:"เล่นรอบเดือนของดวงจันทร์",
+    sp1:"1 ชม./วิ", sp6:"6 ชม./วิ", sp24:"1 วัน/วิ", endPast:"−15 วัน", endNow:"ตอนนี้", endFut:"+45 วัน", scrubAria:"เลื่อนเวลา",
+    chartIntro:"ความสูงของดวงจันทร์เหนือขอบฟ้าในแต่ละชั่วโมง พื้นหลังแสดงช่วงกลางวันและกลางคืน เพื่อให้เห็นว่าดวงจันทร์อยู่บนท้องฟ้ามืดเมื่อใด",
+    lgDay:"กลางวัน", lgTwi:"สนธยา", lgNaut:"สนธยาทางทะเล", lgDark:"มืด", lgMoon:"ดวงจันทร์", lgSun:"ดวงอาทิตย์",
+    comingPhases:"ข้างจันทร์ที่จะมาถึง", phaseCal:"ปฏิทินข้างจันทร์",
+    nights30:"30 คืนข้างหน้า · เวลา 22:00 น.", howFull:"ความสว่างในแต่ละคืน", tapNight:"แตะคืนใดก็ได้เพื่อเปลี่ยนภาพ 3 มิติและตัวเลขทั้งหมดไปยังค่ำคืนนั้น",
+    whyLooks:"ทำไมจึงเห็นเป็นแบบนี้", sem:"ดวงอาทิตย์ โลก และดวงจันทร์ตอนนี้", focEarth:"โลก", focMoon:"ดวงจันทร์", zoomIn:"ซูมเข้า", zoomOut:"ซูมออก",
+    almanac:"ปูมดาราศาสตร์", moonData:"ข้อมูลดวงจันทร์",
+    foot:"ตำแหน่งทั้งหมดคำนวณสดในเบราว์เซอร์ของคุณด้วย Astronomy Engine ของ Don Cross แม่นยำในระดับไม่ถึงหนึ่งนาที เวลาทั้งหมดเป็นเวลาท้องถิ่นของเมืองที่เลือก รวมถึงเวลาออมแสง เวลาขึ้นและตกคำนวณจากขอบฟ้าราบที่ระดับน้ำทะเล ภูเขาและอาคารสูงจึงทำให้เห็นดวงจันทร์ขึ้นช้ากว่าและตกเร็วกว่า ภาพ 3 มิติใช้ความเอียง การส่าย และแสงจริงของสถานที่ที่เลือก ส่วนภาพวงโคจรไม่ได้วาดตามมาตราส่วน",
+    fullScreen:"เต็มจอ", close:"ปิด", fsMoonAria:"แสดงดวงจันทร์เต็มจอ", fsOrbitAria:"แสดงดวงอาทิตย์ โลก และดวงจันทร์เต็มจอ", fsCloseAria:"ปิดเต็มจอ",
+    olMoon:"ดวงจันทร์", olEarth:"โลก", olSun:"แสงอาทิตย์ →", zenithUp:"จุดยอดฟ้า", northUp:"ทิศเหนือ", compassN:"น",
+    today:"วันนี้", tomorrow:"พรุ่งนี้", yesterday:"เมื่อวาน", todayCap:"วันนี้", in:"อีก {d}", ago:"{d} ที่แล้ว",
+    waxNo:"ข้างขึ้น สว่างขึ้นทุกคืน · มองจาก{city}", wanNo:"ข้างแรม สว่างน้อยลงทุกคืน · มองจาก{city}",
+    illumSide:"ของด้านที่หันมาทางโลกได้รับแสงอาทิตย์",
+    cycleMeta:"วันที่ {age} จาก 29.5 วัน{since} · รอบจันทร์ที่ {n}", cycleSince:" นับจากจันทร์ดับเมื่อ {d}",
+    exactFull:"เต็มดวงพอดี <b>{d}</b>", wasFull:"เต็มดวงพอดีเมื่อ <b>{d}</b>",
+    subNearest:"{day} เวลา {time} น. จันทร์ดับครั้งถัดไป {day2} ({d2})", fullIn:"จันทร์เต็มดวง <b>{d}</b>",
+    beforeThat:" ก่อนหน้านั้น: {ph} {day} เวลา {time} น.", subFull:"{day} เวลา {time} น. ({zone}){after}",
+    ocLine:"<b>สว่าง {pct}%</b> · ดวงจันทร์ห่างจากดวงอาทิตย์ {e}° เมื่อมองจากโลก · ห่างจาก{city} {km} กม. · ลากเพื่อหมุน จีบนิ้วหรือเลื่อนเพื่อซูม",
+    fsLine:"<b>สว่าง {pct}%</b> · {lead} · {city} {pos}", altUp:"สูง {a}°", belowHorizon:"อยู่ใต้ขอบฟ้า",
+    capSky:"<strong>{city} {time} น.</strong> · เอียงตรงตามที่เห็นบนท้องฟ้า · สูง {alt}° ทิศ{dir}",
+    capNorth:"<strong>{city} {time} น.</strong> · ทิศเหนืออยู่ด้านบน แบบแผนที่กล้องโทรทรรศน์ · สูง {alt}° ทิศ{dir}",
+    clockLive:"สด · ", clockTravel:"ท่องเวลา · ", live:"สด", ahead:"ล่วงหน้า {d}",
+    altJust:"เพิ่งพ้นขอบฟ้าทางทิศ{dir}", altAbove:"สูง {a}° เหนือขอบฟ้าทางทิศ{dir}",
+    shNew:"จันทร์ดับ", shCres:"จันทร์เสี้ยว", shHalf:"จันทร์ครึ่งดวง", shFull:"จันทร์เต็มดวง", shNearly:"จันทร์เกือบเต็มดวง", shGib:"จันทร์ค่อนดวง",
+    hGlare:"ถูกแสงอาทิตย์กลบ", tGlare:"ดวงจันทร์อยู่ห่างจากดวงอาทิตย์เพียง {e}° จึงมองไม่เห็น อีกไม่กี่วันจะกลับมาเป็นจันทร์เสี้ยวบาง ๆ",
+    hVisible:"มองเห็นได้ตอนนี้", tVisible:"{shape} <b>{alt}</b> และท้องฟ้า{dark}", darkFull:"มืดแล้ว", darkEnough:"มืดพอที่จะเห็นได้ชัด",
+    hTwilight:"อยู่บนฟ้าช่วงสนธยา", tTwilight:"{shape} <b>{alt}</b> ในท้องฟ้ายามสนธยา",
+    hDay:"อยู่บนฟ้าเวลากลางวัน", tDay:"{shape} <b>{alt}</b> มองหาดวงสีซีดบนท้องฟ้ากลางวัน",
+    tLow:"ดวงจันทร์อยู่ต่ำ ภูเขาหรืออาคารอาจบังได้", tUpAll:"ดวงจันทร์จะอยู่เหนือขอบฟ้าตลอดสองวันข้างหน้าโดยไม่ตก",
+    tSets:"จะตกเวลา <b>{time} น.</b> {day}ทางทิศ{dir} ({d})",
+    hBelow:"อยู่ใต้ขอบฟ้า", tDownAll:"ที่{city} ดวงจันทร์จะไม่ขึ้นเลยในสองวันข้างหน้า ซึ่งเกิดในที่ไกลจากเส้นศูนย์สูตรเมื่อดวงจันทร์อยู่ค่อนไปทาง{ns}มาก",
+    north:"เหนือ", south:"ใต้",
+    tRises:"จะขึ้นเวลา <b>{time} น.</b> {day} ทางทิศ{dir} ({d}){when}", riseDark:" ขณะท้องฟ้ามืด", riseTwi:" ในช่วงสนธยา", riseDay:" ในเวลากลางวัน",
+    tThrough:"ภาพ 3 มิติแสดงให้เห็นว่าจะเป็นอย่างไรหากมองทะลุโลกได้",
+    pillUp:"สูง {a}°", pillDown:"ต่ำกว่าขอบฟ้า {a}°",
+    alreadyUp:"ขึ้นอยู่แล้ว", noRise:"ไม่ขึ้น", alreadyDown:"ตกอยู่แล้ว", noSet:"ไม่ตก", next48:"ใน 48 ชม. ข้างหน้า", stillBelow:"ยังอยู่ใต้ขอบฟ้า",
+    skyTitle:"เส้นทางดวงจันทร์เหนือ{city}", next24:"24 ชั่วโมงข้างหน้า", around24:"24 ชั่วโมงรอบวันที่ {d}", now:"ตอนนี้",
+    rangeNowNight:"ตั้งแต่ตอนนี้ตลอดทั้งคืน", rangeFromNight:"ตั้งแต่ {from} ตลอดทั้งคืน", rangeFromTo:"{from} ถึง {to}",
+    bestView:"<b>ช่วงดูดีที่สุด: {range}</b> ดวงจันทร์อยู่บนท้องฟ้ามืด สูงสุดเวลา {time} น. สูง {alt}° เหนือขอบฟ้าทางทิศ{dir}",
+    bestNoDark:"<b>ไม่มีช่วงฟ้ามืดให้ดูใน 24 ชั่วโมงข้างหน้า</b> ดวงจันทร์อยู่บนฟ้าเฉพาะตอนกลางวันหรือสนธยา สูงสุดเวลา {time} น. ({alt}° {dir})",
+    bestNone:"<b>ดวงจันทร์อยู่ใต้ขอบฟ้าตลอด 24 ชั่วโมงข้างหน้า</b> เมื่อมองจาก{city}",
+    evUp:"สูง {a}° ที่{city}", evBelow:"ตอนนั้นอยู่ใต้ขอบฟ้า",
+    aIllum:"ความสว่าง", aIllumD:"โชติมาตร {m}", aPhase:"มุมเฟส", aPhaseD:"มุมดวงอาทิตย์–ดวงจันทร์–โลก 0° คือเต็มดวง",
+    aElong:"ระยะห่างจากดวงอาทิตย์บนท้องฟ้า", aElongD:"มุมห่าง 180° คืออยู่ตรงข้ามดวงอาทิตย์",
+    aAge:"อายุจันทร์", days:"{x} วัน", aAgeD:"จันทร์ดับเมื่อ {d} {time} น.", aLun:"รอบจันทร์ที่", aLunD:"ระบบของบราวน์ รอบที่ 1 เริ่มมกราคม 1923",
+    aDist:"ระยะทาง", km:"{x} กม.", kmFrom:"{x} กม. จาก{city}", aSize:"ขนาดปรากฏ", aSizeD:"ลิปดา (ความกว้าง)",
+    aPos:"ตำแหน่ง", aPosD:"มุมเงย · มุมทิศ จาก{city}", aDec:"เดคลิเนชัน", aDecSets:"ที่เดคลิเนชันนี้ดวงจันทร์ไม่ตกที่นี่", aDecRises:"ที่เดคลิเนชันนี้ดวงจันทร์ไม่ขึ้นที่นี่", aDecD:"ดวงจันทร์อยู่ค่อนไปทางเหนือมากแค่ไหน",
+    aCon:"กลุ่มดาว", aConD:"ดาวที่อยู่ด้านหลังดวงจันทร์", aLib:"การส่าย (ไลเบรชัน)", aLibV:"ละติจูด {a}° · ลองจิจูด {b}°", aLibD:"{pole}และขอบด้าน{limb}เอียงมาทางเรา",
+    poleS:"ขั้วใต้", poleN:"ขั้วเหนือ", limbW:"ตะวันตก", limbE:"ตะวันออก",
+    aPeri:"ใกล้โลกที่สุดครั้งถัดไป", aApo:"ไกลโลกที่สุดครั้งถัดไป", aEcl:"จันทรุปราคาครั้งถัดไป",
+    ecl_penumbral:"แบบเงามัว (มืดลงเพียงเล็กน้อย)", ecl_partial:"บางส่วน", ecl_total:"เต็มดวง", ecl_annular:"วงแหวน",
+    eclUp:"ดวงจันทร์สูง {a}° ที่{city}", eclDown:"ดวงจันทร์อยู่ใต้ขอบฟ้าที่{city}",
+    aSun:"ดวงอาทิตย์", sDay:"กลางวัน", sCivil:"สนธยาทางพลเรือน", sNaut:"สนธยาทางทะเล", sAstro:"สนธยาทางดาราศาสตร์", sNight:"กลางคืนมืดสนิท",
+    why1:"ดวงจันทร์กำลังผ่านระหว่างโลกกับดวงอาทิตย์ ด้านที่สว่างหันออกจากเรา เราจึงเห็นน้อยมากหรือไม่เห็นเลย",
+    why2:"ดวงจันทร์อยู่เยื้องไปด้านข้างของดวงอาทิตย์ เราจึงเห็นขอบบาง ๆ ของด้านที่สว่าง คือจันทร์เสี้ยว",
+    why3:"ดวงจันทร์ทำมุมฉากกับดวงอาทิตย์เมื่อมองจากโลก เราจึงเห็นด้านสว่างครึ่งหนึ่งพอดี คือจันทร์ครึ่งดวง",
+    why4:"ดวงจันทร์อยู่อีกฟากของโลกเมื่อเทียบกับดวงอาทิตย์ ด้านที่สว่างส่วนใหญ่จึงหันมาทางเรา",
+    why5:"ดวงจันทร์อยู่ตรงข้ามดวงอาทิตย์เกือบพอดี ด้านสว่างทั้งหมดจึงหันมาทางเรา คือจันทร์เต็มดวง",
+    orbitText:"ดวงอาทิตย์ส่องสว่างดวงจันทร์ครึ่งหนึ่งเสมอ ตอนนี้ดวงจันทร์อยู่ห่างจากดวงอาทิตย์ {e}° เมื่อมองจากโลก {why} ลากเพื่อหมุนมุมมอง ใช้ + และ − (หรือจีบนิ้ว/เลื่อน) เพื่อซูม เลือก “ดวงจันทร์” เพื่อซูมเข้าใกล้ดวงจันทร์",
+    chartHorizon:"ขอบฟ้า", chartNow:"ตอนนี้", chartRise:"ขึ้น ", chartSet:"ตก ", chartAria:"ความสูงของดวงจันทร์ใน 24 ชั่วโมงข้างหน้า",
+    nightAria:"{d} 22:00 น. สว่าง {p} เปอร์เซ็นต์",
+    tMin:"{x} นาที/วิ", tH:"{x} ชม./วิ", tDay1:"{x} วัน/วิ", tDays:"{x} วัน/วิ",
+    dD:"{d} วัน", dDH:"{d} วัน {h} ชม.", dHM:"{h} ชม. {m} นาที", dM:"{m} นาที",
+    h1Root:"ข้างขึ้นข้างแรมวันนี้", h1City:"ข้างขึ้นข้างแรมวันนี้ที่{city}",
+    titleRoot:"ข้างขึ้นข้างแรมวันนี้ – ดวงจันทร์ 3 มิติแบบสด | Moonwatch", titleCity:"ข้างขึ้นข้างแรมวันนี้ที่{city} – เวลาดวงจันทร์ขึ้น ตก และจันทร์เต็มดวง | Moonwatch",
+    descRoot:"ข้างขึ้นข้างแรมวันนี้แบบ 3 มิติ: ดวงจันทร์สว่างกี่เปอร์เซ็นต์ เวลาขึ้นและตก จันทร์เต็มดวงครั้งถัดไป และช่วงที่ดูได้ดีที่สุด สำหรับ 51 เมืองทั่วโลก ใช้ฟรี",
+    descCity:"ข้างขึ้นข้างแรมวันนี้ที่{city}: ความสว่างของดวงจันทร์แบบสด เวลาดวงจันทร์ขึ้นและตกตามเวลาท้องถิ่น จันทร์เต็มดวงครั้งถัดไป และช่วงเวลาที่ดูได้ดีที่สุด แสดงเป็นภาพ 3 มิติ",
+    faqEyebrow:"คำถามเกี่ยวกับดวงจันทร์", faqTitle:"เกี่ยวกับดวงจันทร์", otherCities:"ข้างขึ้นข้างแรมวันนี้ในเมืองอื่น", citiesEyebrow:"51 เมือง", langLink:"Read this page in English",
+    q1:"วันนี้ดวงจันทร์เป็นข้างขึ้นหรือข้างแรม?", a1:"ข้างของดวงจันทร์คือส่วนของด้านที่ได้รับแสงอาทิตย์ที่เรามองเห็นจากโลก Moonwatch คำนวณแบบสดสำหรับเมืองที่เลือก แสดงเปอร์เซ็นต์ความสว่างที่แม่นยำ และหมุนดวงจันทร์ 3 มิติให้ตรงกับที่คุณเห็นบนท้องฟ้า หนึ่งรอบจากจันทร์ดับถึงจันทร์ดับใช้เวลาประมาณ 29.5 วัน",
+    q2:"จันทร์เต็มดวงครั้งถัดไปคือเมื่อไร?", a2:"จันทร์เต็มดวงเกิดขึ้นประมาณทุก 29.5 วัน เมื่อดวงจันทร์อยู่ตรงข้ามกับดวงอาทิตย์บนท้องฟ้า ตัวนับถอยหลังด้านบนของหน้านี้แสดงวันและเวลาท้องถิ่นของจันทร์เต็มดวงครั้งถัดไป และปฏิทินข้างจันทร์แสดงจันทร์ดับ ขึ้นครึ่งดวง เต็มดวง และแรมครึ่งดวงที่จะมาถึง",
+    q3:"ข้างจันทร์ทั้ง 8 แบบมีอะไรบ้าง?", a3:"จันทร์ดับ จันทร์เสี้ยวข้างขึ้น จันทร์ครึ่งดวงข้างขึ้น จันทร์ค่อนดวงข้างขึ้น จันทร์เต็มดวง จันทร์ค่อนดวงข้างแรม จันทร์ครึ่งดวงข้างแรม และจันทร์เสี้ยวข้างแรม ข้างขึ้นหมายถึงส่วนที่สว่างเพิ่มขึ้นทุกคืน ส่วนข้างแรมหมายถึงส่วนที่สว่างลดลง",
+    q4:"ทำไมดวงจันทร์ขึ้นไม่ตรงเวลาเดิมทุกวัน?", a4:"ดวงจันทร์เคลื่อนที่ไปตามวงโคจรวันละประมาณ 13° โลกจึงต้องหมุนต่ออีกเล็กน้อยกว่าดวงจันทร์จะขึ้นอีกครั้ง โดยเฉลี่ยดวงจันทร์ขึ้นช้าลงวันละประมาณ 50 นาที แต่แตกต่างกันมากตามฤดูกาลและตำแหน่งที่อยู่",
+    q5:"ทำไมดวงจันทร์ดูกลับหัวในซีกโลกใต้?", a5:"คนที่อยู่ใต้เส้นศูนย์สูตรมองดวงจันทร์จากอีกฟากของโลก ดวงจันทร์จึงดูหมุนไปประมาณ 180 องศา จันทร์ข้างขึ้นจะสว่างด้านซ้ายแทนด้านขวา Moonwatch แสดงดวงจันทร์เอียงตรงตามที่เห็นจากเมืองที่คุณเลือก",
+    q6:"มองเห็นดวงจันทร์ตอนกลางวันได้ไหม?", a6:"ได้ ดวงจันทร์อยู่เหนือขอบฟ้าประมาณครึ่งหนึ่งของแต่ละวัน และในหลายช่วงของเดือนบางส่วนของเวลานั้นตรงกับกลางวัน มองเห็นได้ง่ายเป็นดวงสีซีดในช่วงบ่ายราวขึ้นครึ่งดวง และช่วงเช้าราวแรมครึ่งดวง"
+  }
+};
+const PHN = {
+  en: {new:"New moon", wxc:"Waxing crescent", fq:"First quarter", wxg:"Waxing gibbous", full:"Full moon", wng:"Waning gibbous", lq:"Last quarter", wnc:"Waning crescent"},
+  th: {new:"จันทร์ดับ", wxc:"จันทร์เสี้ยวข้างขึ้น", fq:"จันทร์ครึ่งดวงข้างขึ้น", wxg:"จันทร์ค่อนดวงข้างขึ้น", full:"จันทร์เต็มดวง", wng:"จันทร์ค่อนดวงข้างแรม", lq:"จันทร์ครึ่งดวงข้างแรม", wnc:"จันทร์เสี้ยวข้างแรม"}
+};
+const CITY_TH = {"Oslo":"ออสโล","Longyearbyen (Svalbard)":"ลองเยียร์เบียน (สฟาลบาร์)","Reykjavík":"เรคยาวิก","Stockholm":"สตอกโฮล์ม","London":"ลอนดอน","Paris":"ปารีส","Berlin":"เบอร์ลิน","Madrid":"มาดริด","Rome":"โรม","Athens":"เอเธนส์","Istanbul":"อิสตันบูล","Moscow":"มอสโก","New York":"นิวยอร์ก","Toronto":"โทรอนโต","Chicago":"ชิคาโก","Denver":"เดนเวอร์","Los Angeles":"ลอสแอนเจลิส","Vancouver":"แวนคูเวอร์","Anchorage":"แองเคอเรจ","Mexico City":"เม็กซิโกซิตี","Bogotá":"โบโกตา","Lima":"ลิมา","São Paulo":"เซาเปาลู","Rio de Janeiro":"รีโอเดจาเนโร","Santiago":"ซานติอาโก","Buenos Aires":"บัวโนสไอเรส","Cairo":"ไคโร","Casablanca":"คาซาบลังกา","Lagos":"ลากอส","Nairobi":"ไนโรบี","Johannesburg":"โจฮันเนสเบิร์ก","Cape Town":"เคปทาวน์","Dubai":"ดูไบ","Mumbai":"มุมไบ","Delhi":"เดลี","Bangkok":"กรุงเทพฯ","Chiang Mai":"เชียงใหม่","Phuket":"ภูเก็ต","Singapore":"สิงคโปร์","Jakarta":"จาการ์ตา","Hong Kong":"ฮ่องกง","Beijing":"ปักกิ่ง","Manila":"มะนิลา","Seoul":"โซล","Tokyo":"โตเกียว","Perth":"เพิร์ท","Sydney":"ซิดนีย์","Melbourne":"เมลเบิร์น","Auckland":"ออกแลนด์","Honolulu":"โฮโนลูลู","McMurdo Station":"สถานีแมคเมอร์โด"};
+const CONT_TH = {"Europe":"ยุโรป","North America":"อเมริกาเหนือ","South America":"อเมริกาใต้","Africa":"แอฟริกา","Asia":"เอเชีย","Oceania":"โอเชียเนีย","Antarctica":"แอนตาร์กติกา"};
+const TH8L = ["เหนือ","ตะวันออกเฉียงเหนือ","ตะวันออก","ตะวันออกเฉียงใต้","ใต้","ตะวันตกเฉียงใต้","ตะวันตก","ตะวันตกเฉียงเหนือ"];
+const TH8S = ["น.","ตอ.น.","ตอ.","ตอ.ต.","ต.","ตต.ต.","ตต.","ตต.น."];
+let LANG = "en";
+const MW = (typeof window !== "undefined" && window.MW) || null;
+const slugOf = (name) => name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\(.*?\)/g,"").trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+try { const sl = localStorage.getItem("moonwatch.lang"); if (sl === "en" || sl === "th") LANG = sl; else if (/^th/i.test(navigator.language || "")) LANG = "th"; } catch(e) { if (/^th/i.test((typeof navigator!=="undefined"&&navigator.language)||"")) LANG = "th"; }
+function tx(k, v){
+  let s = I18N[LANG][k]; if (s === undefined) s = I18N.en[k]; if (s === undefined) return k;
+  return v ? s.replace(/\{(\w+)\}/g, (m, n) => (v[n] === undefined ? "" : String(v[n]))) : s;
+}
+if (MW && (MW.lang === "en" || MW.lang === "th")) LANG = MW.lang;
+const LOC = () => LANG === "th" ? "th-TH" : "en-GB";
+const phName = (k) => PHN[LANG][k];
+
+// ---------- formatting ----------
+// formatters follow the selected city's time zone
+let TZ = "Europe/Oslo", fTime, fTimeS, fDay, fDayY, fParts, fZone, fWd;
+function setTZ(tz){
+  try { new Intl.DateTimeFormat("en-GB",{timeZone:tz}); TZ = tz; } catch(e) { TZ = "UTC"; }
+  fTime = new Intl.DateTimeFormat(LOC(),{timeZone:TZ,hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+  fTimeS = new Intl.DateTimeFormat(LOC(),{timeZone:TZ,hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+  fDay = new Intl.DateTimeFormat(LOC(),{timeZone:TZ,weekday:"short",day:"numeric",month:"short"});
+  fDayY = new Intl.DateTimeFormat(LOC(),{timeZone:TZ,weekday:"short",day:"numeric",month:"short",year:"numeric"});
+  fParts = new Intl.DateTimeFormat("en-GB",{timeZone:TZ,year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric",hourCycle:"h23",weekday:"short"});
+  fZone = new Intl.DateTimeFormat("en-GB",{timeZone:TZ,timeZoneName:"short"});
+  fWd = new Intl.DateTimeFormat(LOC(),{timeZone:TZ,weekday:"short"});
+}
+setTZ(TZ);
+function parts(d){ const o={}; for(const p of fParts.formatToParts(d)) o[p.type]=p.value; return {y:+o.year,m:+o.month,d:+o.day,h:+o.hour,mi:+o.minute,s:+o.second,wd:o.weekday}; }
+function zone(d){ const p=fZone.formatToParts(d).find(x=>x.type==="timeZoneName"); return p?p.value:""; }
+function tzOffset(d){ const p=parts(d); return Math.round((Date.UTC(p.y,p.m-1,p.d,p.h,p.mi,p.s)-Math.floor(d.getTime()/1000)*1000)/MIN); }
+function localDate(y,m,d,h,mi){ const g=Date.UTC(y,m-1,d,h,mi); let t=g-tzOffset(new Date(g))*MIN; const o2=tzOffset(new Date(t)); t=g-o2*MIN; return new Date(t); }
+const T = (d) => fTime.format(d);
+const sameDay = (a,b) => { const p=parts(a), q=parts(b); return p.y===q.y&&p.m===q.m&&p.d===q.d; };
+function dayWord(d, ref){
+  if (sameDay(d,ref)) return tx("today");
+  if (sameDay(d,new Date(ref.getTime()+DAY))) return tx("tomorrow");
+  if (sameDay(d,new Date(ref.getTime()-DAY))) return tx("yesterday");
+  return fDay.format(d);
+}
+function durRaw(ms){
+  ms = Math.abs(ms);
+  const d=Math.floor(ms/DAY), h=Math.floor(ms%DAY/HOUR), m=Math.floor(ms%HOUR/MIN);
+  if (d>=3) return tx("dD",{d})+(h?" "+tx("dHM",{h,m:0}).replace(/ 0.*$/,""):"");
+  if (d>=1) return tx("dDH",{d,h});
+  if (h>=1) return tx("dHM",{h,m});
+  return tx("dM",{m});
+}
+function dur(ms){ return ms < 0 ? tx("ago",{d:durRaw(ms)}) : tx("in",{d:durRaw(ms)}); }
+const C16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const C16L = ["north","north-northeast","northeast","east-northeast","east","east-southeast","southeast","south-southeast","south","south-southwest","southwest","west-southwest","west","west-northwest","northwest","north-northwest"];
+const ci = (az) => Math.round(((az%360)+360)%360/22.5)%16;
+const ci8 = (az) => Math.round(((az%360)+360)%360/45)%8;
+const dS = (az) => LANG === "th" ? TH8S[ci8(az)] : C16[ci(az)];
+const dL = (az) => LANG === "th" ? TH8L[ci8(az)] : C16L[ci(az)];
+const fmt1 = (x) => (Math.round(x*10)/10).toFixed(1);
+const fmtInt = (x) => Math.round(x).toLocaleString("en-GB");
+const sgn = (x,dp=1) => (x>=0?"+":"−")+Math.abs(x).toFixed(dp);
+
+// ---------- names ----------
+const QKEY = ["new","fq","full","lq"];
+
+// ---------- boot guard ----------
+const stageMsg = $("#stageMsg");
+if (!window.THREE || !window.Astronomy) {
+  stageMsg.hidden = false;
+  stageMsg.textContent = "The 3D engine or the astronomy library didn't load. Check your connection and reload the page.";
+  $("#stageCap").textContent = "Not loaded";
+  return;
+}
+const A = window.Astronomy;
+const core = window.makeMoonCore(A);
+const Moon = A.Body.Moon, Sun = A.Body.Sun;
+
+// ---------- state ----------
+const st = {
+  cityIdx: 0, live: true, simMs: Date.now(), playing: false, speedH: 24, view: "sky",
+  lastFast: 0, lastSlow: 0, slowAt: -1, nightsKey: "", fast: null, slow: null
+};
+function defaultCity(){
+  if (MW && MW.city) { const ci0 = CITIES.findIndex(x=>x[0]===MW.city); if (ci0 >= 0) return ci0; }
+  let saved = null;
+  try { saved = localStorage.getItem("moonwatch.city"); } catch(e) {}
+  const si = CITIES.findIndex(x=>x[0]===saved); if (si >= 0) return si;
+  let vtz = ""; try { vtz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch(e) {}
+  const ti = CITIES.findIndex(x=>x[3]===vtz); if (ti >= 0) return ti;
+  const mine = -new Date().getTimezoneOffset(); let best = -1, bd = 1e9;
+  CITIES.forEach((c,i)=>{ try { setTZ(c[3]); const d = Math.abs(tzOffset(new Date()) - mine); if (d < bd) { bd = d; best = i; } } catch(e) {} });
+  return bd <= 30 && best >= 0 ? best : 0;
+}
+st.cityIdx = defaultCity();
+setTZ(CITIES[st.cityIdx][3]);
+let obs = makeObs();
+function makeObs(){ const c=CITIES[st.cityIdx]; return new A.Observer(c[1], c[2], 10); }
+const cityLabel = (c) => LANG === "th" ? (CITY_TH[c[0]] || c[0]) : c[0];
+const cityName = () => cityLabel(CITIES[st.cityIdx]).replace(/ \([^)]*\)$/,"");
+const southern = () => CITIES[st.cityIdx][1] < 0;
+
+const sel = $("#city");
+function buildCities(){
+  sel.innerHTML = "";
+  const groups = {};
+  CITIES.forEach((c,i)=>{
+    if (!groups[c[4]]) { const g = document.createElement("optgroup"); g.label = LANG === "th" ? (CONT_TH[c[4]] || c[4]) : c[4]; groups[c[4]] = g; sel.appendChild(g); }
+    const o = document.createElement("option"); o.value = i; o.textContent = cityLabel(c); groups[c[4]].appendChild(o);
+  });
+  sel.value = st.cityIdx;
+}
+buildCities();
+const pagePath = (cityIdx, lang) => (lang === "th" ? "/th" : "") + (cityIdx == null ? "/" : "/" + slugOf(CITIES[cityIdx][0]) + "/");
+sel.addEventListener("change", ()=>{
+  st.cityIdx = +sel.value;
+  try { localStorage.setItem("moonwatch.city", CITIES[st.cityIdx][0]); } catch(e) {}
+  if (MW) { location.href = pagePath(st.cityIdx, LANG); return; }
+  obs = makeObs(); setTZ(CITIES[st.cityIdx][3]);
+  st.nightsKey=""; refreshAll(true);
+});
+
+// ---------- astronomy ----------
+let qCache = {from:0,to:0,list:[]};
+function quarterList(ms){
+  if (!(ms - qCache.from > 31*DAY && qCache.to - ms > 60*DAY)) {
+    const from = ms - 40*DAY, to = ms + 95*DAY, list = [];
+    let mq = A.SearchMoonQuarter(new Date(from));
+    while (mq.time.date.getTime() < to) { list.push({q:mq.quarter, date:mq.time.date, ut:mq.time.ut}); mq = A.NextMoonQuarter(mq); }
+    qCache = {from, to, list};
+  }
+  return qCache.list;
+}
+function horizonAt(body, date){
+  const eq = A.Equator(body, date, obs, true, true);
+  return A.Horizon(date, obs, eq.ra, eq.dec, "normal");
+}
+function fastState(date){
+  const t = A.MakeTime(date);
+  const ill = A.Illumination(Moon, t);
+  const lon = A.MoonPhase(t);
+  const eq = A.Equator(Moon, t, obs, true, true);
+  const hor = A.Horizon(t, obs, eq.ra, eq.dec, "normal");
+  const sh = horizonAt(Sun, t);
+  const ms = date.getTime();
+  const ql = quarterList(ms);
+  let prevNew = null, prevQ = null, nextQ = null, nearest = null;
+  for (const e of ql) {
+    const tm = e.date.getTime();
+    if (tm <= ms) { prevQ = e; if (e.q===0) prevNew = e; }
+    else if (!nextQ) nextQ = e;
+    if (Math.abs(tm-ms) < 18*HOUR) nearest = e;
+  }
+  let key;
+  if (nearest) key = QKEY[nearest.q];
+  else if (lon < 90) key = "wxc"; else if (lon < 180) key = "wxg"; else if (lon < 270) key = "wng"; else key = "wnc";
+  const nextFull = ql.find(e => e.q===2 && e.date.getTime() > ms);
+  const nextNew = ql.find(e => e.q===0 && e.date.getTime() > ms);
+  const age = prevNew ? (ms - prevNew.date.getTime())/DAY : lon/360*29.530588;
+  const lunation = prevNew ? Math.round((prevNew.ut + 2451545 - 2451550.09766)/29.530588861) + 953 : null;
+  return { date, frac: ill.phase_fraction, phaseAngle: ill.phase_angle, mag: ill.mag, lon, key, nearest,
+    alt: hor.altitude, az: hor.azimuth, ra: eq.ra, dec: eq.dec, distKm: eq.dist*core.KM_PER_AU,
+    sunAlt: sh.altitude, sunAz: sh.azimuth, elong: A.AngleFromSun(Moon, t),
+    age, lunation, prevNew, nextQ, nextFull, nextNew, quarters: ql };
+}
+
+function slowState(date){
+  const ms = date.getTime();
+  const rise = A.SearchRiseSet(Moon, obs, +1, date, 2);
+  const set = A.SearchRiseSet(Moon, obs, -1, date, 2);
+  const riseAz = rise ? horizonAt(Moon, rise).azimuth : null;
+  const setAz = set ? horizonAt(Moon, set).azimuth : null;
+  const tr = A.SearchHourAngle(Moon, obs, 0, date);
+  // chart samples: -3 h .. +21 h every 10 min
+  const start = ms - 3*HOUR, end = ms + 21*HOUR, step = 10*MIN, samples = [];
+  for (let t = start; t <= end; t += step) {
+    const d = new Date(t);
+    const m = horizonAt(Moon, d), s = horizonAt(Sun, d);
+    samples.push({t, alt:m.altitude, az:m.azimuth, sun:s.altitude});
+  }
+  // best dark window from now: first run of at least 30 min, else the longest
+  const runs = []; let run = null;
+  for (const s of samples) {
+    if (s.t < ms - 1) continue;
+    const ok = s.alt > 3 && s.sun < -6;
+    if (ok) { if (!run) run = {a:s.t, b:s.t, peak:s}; run.b = s.t; if (s.alt > run.peak.alt) run.peak = s; }
+    else if (run) { runs.push(run); run = null; }
+  }
+  if (run) { run.open = true; runs.push(run); }
+  let best = runs.find(r => r.b - r.a >= 30*MIN) || runs.sort((x,y)=>(y.b-y.a)-(x.b-x.a))[0] || null;
+  let anyUp = null;
+  if (!best) { for (const s of samples) { if (s.t >= ms-1 && s.alt > 3) { if (!anyUp || s.alt > anyUp.alt) anyUp = s; } } }
+  // apsides, eclipse
+  let ap = A.SearchLunarApsis(date); const ap2 = A.NextLunarApsis(ap);
+  const peri = ap.kind===0 ? ap : ap2, apo = ap.kind===1 ? ap : ap2;
+  const ecl = A.SearchLunarEclipse(date);
+  const eclAlt = horizonAt(Moon, ecl.peak).altitude;
+  const eqj = A.Equator(Moon, date, obs, false, true);
+  const con = A.Constellation(eqj.ra, eqj.dec);
+  const lib = A.Libration(date);
+  const sunRise = A.SearchRiseSet(Sun, obs, +1, date, 2), sunSet = A.SearchRiseSet(Sun, obs, -1, date, 2);
+  return {rise, set, riseAz, setAz, transit: tr, samples, start, end, best, anyUp, peri, apo, ecl, eclAlt, con, lib, sunRise, sunSet};
+}
+
+// ---------- 2D phase icons ----------
+function drawPhaseIcon(cv, lon, px){
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  cv.width = px*dpr; cv.height = px*dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0);
+  const r = px/2 - 1, cx = px/2, cy = px/2;
+  g.clearRect(0,0,px,px);
+  g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fillStyle = "#1a2234"; g.fill();
+  const c = Math.cos(lon*DEG), waxing = lon < 180;
+  g.save(); g.translate(cx,cy); if (waxing === southern()) g.scale(-1,1);
+  g.beginPath();
+  g.arc(0,0,r,-Math.PI/2,Math.PI/2,false);
+  g.ellipse(0,0,Math.max(Math.abs(c)*r,0.001),r,0,Math.PI/2,-Math.PI/2,c>0);
+  g.closePath();
+  const grd = g.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+  grd.addColorStop(0,"#f6f1e4"); grd.addColorStop(1,"#c9c1ad");
+  g.fillStyle = grd; g.fill(); g.restore();
+  g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.strokeStyle="rgba(236,231,218,.18)"; g.lineWidth=1; g.stroke();
+}
+
+let isFull = false;
+// ---------- 3D: the Moon as seen from the city ----------
+const canvas = $("#moon3d"), stage = $("#stage");
+let renderer;
+try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true}); }
+catch(e) { stageMsg.hidden=false; stageMsg.textContent="Your browser couldn't start 3D graphics (WebGL). The numbers below still update live."; }
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 400);
+const texLoader = new THREE.TextureLoader();
+const moonTex = texLoader.load(MOON_TEX);
+if (renderer) moonTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const moonMat = new THREE.ShaderMaterial({
+  uniforms:{ uMap:{value:moonTex}, uSun:{value:new THREE.Vector3(1,0,0)}, uCam:{value:new THREE.Vector3()}, uEarth:{value:0.02}, uExp:{value:1.12} },
+  vertexShader:`varying vec3 vN; varying vec3 vW; varying vec2 vUv;
+    void main(){ vUv=uv; vN=normalize(mat3(modelMatrix)*normal); vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`,
+  fragmentShader:`uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uCam; uniform float uEarth; uniform float uExp;
+    varying vec3 vN; varying vec3 vW; varying vec2 vUv;
+    void main(){
+      vec3 n=normalize(vN); vec3 v=normalize(uCam-vW); vec3 l=normalize(uSun);
+      vec3 alb=pow(texture2D(uMap,vUv).rgb, vec3(2.2))*vec3(1.0,0.975,0.93);
+      float mu0=dot(n,l); float mu=max(dot(n,v),0.0);
+      float lit=smoothstep(-0.015,0.05,mu0); float m0=max(mu0,0.0);
+      float ls=2.0*m0/(m0+mu+0.001);
+      float refl=mix(ls,m0,0.3)*lit;
+      vec3 col=alb*refl*uExp;
+      col+=alb*uEarth*vec3(0.70,0.82,1.0)*(0.35+0.65*mu)*(1.0-lit);
+      col=col/(1.0+col*0.12);
+      gl_FragColor=vec4(pow(col,vec3(1.0/2.2)),1.0);
+    }`
+});
+const moon = new THREE.Mesh(new THREE.SphereGeometry(1, 160, 96), moonMat);
+scene.add(moon);
+
+// soft halo
+function glowTexture(){
+  const c=document.createElement("canvas"); c.width=c.height=256; const g=c.getContext("2d");
+  const r=g.createRadialGradient(128,128,40,128,128,128);
+  r.addColorStop(0,"rgba(255,246,225,0.55)"); r.addColorStop(0.35,"rgba(255,240,210,0.16)"); r.addColorStop(1,"rgba(255,240,210,0)");
+  g.fillStyle=r; g.fillRect(0,0,256,256); return new THREE.CanvasTexture(c);
+}
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(), transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, opacity:.5}));
+halo.scale.set(3.3,3.3,1); scene.add(halo);
+
+// stars
+function makeStars(n, radius){
+  const pos=new Float32Array(n*3), size=new Float32Array(n), ph=new Float32Array(n);
+  for (let i=0;i<n;i++){
+    const u=Math.random()*2-1, a=Math.random()*Math.PI*2, s=Math.sqrt(1-u*u);
+    pos[i*3]=radius*s*Math.cos(a); pos[i*3+1]=radius*u; pos[i*3+2]=radius*s*Math.sin(a);
+    const m=Math.pow(Math.random(),3); size[i]=0.7+m*2.6; ph[i]=Math.random()*6.28;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  geo.setAttribute("size",new THREE.BufferAttribute(size,1));
+  geo.setAttribute("phase",new THREE.BufferAttribute(ph,1));
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0},uOp:{value:1},uPR:{value:1},uTw:{value:reduceMotion?0:1}},
+    vertexShader:`attribute float size; attribute float phase; uniform float uPR; uniform float uTime; uniform float uTw; varying float vA;
+      void main(){ vA=0.75+0.25*sin(uTime*(1.2+phase*0.4)+phase)*uTw; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=size*uPR; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform float uOp; varying float vA;
+      void main(){ vec2 p=gl_PointCoord-0.5; float d=length(p); float a=smoothstep(0.5,0.0,d); gl_FragColor=vec4(vec3(0.86,0.9,1.0), a*vA*uOp); }`,
+    transparent:true, depthWrite:false
+  });
+  return new THREE.Points(geo,mat);
+}
+const stars = makeStars(1800, 120);
+scene.add(stars);
+
+let baseQ = new THREE.Quaternion(), dragQ = new THREE.Quaternion(), viewDir = new THREE.Vector3(0,0,-1), upDir = new THREE.Vector3(0,1,0);
+const sky = { light:new THREE.Vector3(1,0,0) };
+function updateSky(date){
+  const g = core.skyGeometry(date, obs);
+  const bx = new THREE.Vector3(...g.bodyX), by = new THREE.Vector3(...g.bodyY), bz = new THREE.Vector3(...g.bodyZ);
+  const m = new THREE.Matrix4().makeBasis(bx, bz, by.clone().negate());
+  baseQ.setFromRotationMatrix(m);
+  viewDir.set(...g.view).normalize();
+  sky.light.set(...g.light).normalize();
+  if (st.view === "north") upDir.set(...g.celestialNorth); else upDir.set(0,1,0);
+  // keep up perpendicular to the view
+  upDir.sub(viewDir.clone().multiplyScalar(upDir.dot(viewDir))).normalize();
+  sky.celestialNorth = new THREE.Vector3(...g.celestialNorth);
+}
+function camDistance(c, radius, fill){
+  const vf=c.fov*DEG/2, hf=Math.atan(Math.tan(vf)*c.aspect);
+  return radius/(Math.sin(Math.min(vf,hf))*fill);
+}
+function placeCamera(){
+  const D = camDistance(cam, 1, isFull ? 0.6 : 0.70);
+  cam.position.copy(viewDir).multiplyScalar(-D);
+  cam.up.copy(upDir);
+  cam.lookAt(0,0,0);
+  moonMat.uniforms.uCam.value.copy(cam.position);
+  moonMat.uniforms.uSun.value.copy(sky.light);
+}
+
+// drag to turn, then ease back to the true orientation
+let dragging=false, lastX=0, lastY=0, releasedAt=-1e9;
+const qTmp = new THREE.Quaternion(), qId = new THREE.Quaternion();
+canvas.addEventListener("pointerdown",(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; try{canvas.setPointerCapture(e.pointerId);}catch(_){} });
+canvas.addEventListener("pointermove",(e)=>{
+  if(!dragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+  const right = new THREE.Vector3().crossVectors(viewDir, upDir).normalize();
+  dragQ.premultiply(qTmp.setFromAxisAngle(upDir, dx*0.008));
+  dragQ.premultiply(qTmp.setFromAxisAngle(right, dy*0.008));
+});
+const endDrag=()=>{ if(dragging){dragging=false; releasedAt=performance.now();} };
+canvas.addEventListener("pointerup",endDrag); canvas.addEventListener("pointercancel",endDrag); canvas.addEventListener("pointerleave",endDrag);
+canvas.addEventListener("dblclick",()=>{ releasedAt=-1e9; });
+
+// intro: the Moon turns from its far side into today's face
+let introT = reduceMotion ? 1 : 0;
+const introFrom = new THREE.Quaternion();
+
+function resizeRenderer(r, c, el){
+  const w = el.clientWidth, h = el.clientHeight;
+  if (!w || !h) return;
+  const pr = Math.min(window.devicePixelRatio||1, 2);
+  if (r.getPixelRatio() !== pr) r.setPixelRatio(pr);
+  const s = r.getSize(new THREE.Vector2());
+  if (s.x !== w || s.y !== h) { r.setSize(w, h, false); c.aspect = w/h; c.updateProjectionMatrix(); }
+}
+
+// sky colour behind the moon follows the real sun altitude at the city
+const SKYKEYS = [
+  {a:-90, top:[4,7,13],    bot:[10,18,33],  stars:1.0},
+  {a:-18, top:[4,7,13],    bot:[10,18,33],  stars:1.0},
+  {a:-12, top:[6,10,24],   bot:[18,30,58],  stars:.75},
+  {a:-6,  top:[12,20,46],  bot:[46,52,92],  stars:.35},
+  {a:-1,  top:[22,36,74],  bot:[150,98,86], stars:.08},
+  {a:4,   top:[38,74,124], bot:[140,150,170],stars:0},
+  {a:15,  top:[34,82,140], bot:[96,140,190], stars:0},
+  {a:90,  top:[30,80,140], bot:[90,138,190], stars:0}
+];
+function skyColors(alt){
+  let i=0; while(i<SKYKEYS.length-2 && alt>SKYKEYS[i+1].a) i++;
+  const a=SKYKEYS[i], b=SKYKEYS[i+1], t=Math.min(1,Math.max(0,(alt-a.a)/(b.a-a.a)));
+  const mix=(x,y)=>x.map((v,k)=>Math.round(v+(y[k]-v)*t));
+  return {top:"rgb("+mix(a.top,b.top)+")", bot:"rgb("+mix(a.bot,b.bot)+")", stars:a.stars+(b.stars-a.stars)*t};
+}
+
+// compass rose: shows which way is up in the 3D view
+function drawCompass(){
+  const svg = $("#compass");
+  // direction of celestial north on screen relative to up
+  const right = new THREE.Vector3().crossVectors(viewDir, upDir).normalize();
+  const angOf = (v) => Math.atan2(v.dot(right), v.dot(upDir))/DEG;
+  const north = sky.celestialNorth ? angOf(sky.celestialNorth) : 0;
+  const zen = angOf(new THREE.Vector3(0,1,0));
+  svg.innerHTML =
+    '<circle r="27" fill="rgba(5,8,15,.55)" stroke="var(--rule)"/>' +
+    '<g transform="rotate('+north.toFixed(1)+')"><path d="M0 -21 L4 -6 L-4 -6Z" fill="var(--ink)"/><text y="-23" text-anchor="middle" font-size="8" fill="var(--ink-2)" font-family="IBM Plex Mono,IBM Plex Sans Thai,monospace">'+tx("compassN")+'</text></g>' +
+    '<g transform="rotate('+zen.toFixed(1)+')"><path d="M0 -14 L0 14" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="2 2"/><circle cy="-14" r="2.2" fill="var(--gold)"/></g>' +
+    '<text y="22" text-anchor="middle" font-size="7" fill="var(--ink-3)" font-family="IBM Plex Mono,monospace">'+tx(st.view==="sky"?"zenithUp":"northUp")+'</text>';
+}
+
+// ---------- 3D: orbit view ----------
+const ocanvas = $("#orbit3d"), obox = $("#orbitBox");
+let orend = null;
+try { orend = new THREE.WebGLRenderer({canvas:ocanvas, antialias:true, alpha:true}); } catch(e) {}
+const oscene = new THREE.Scene();
+const ocam = new THREE.PerspectiveCamera(34, 4/3, 0.1, 200);
+const earthTex = texLoader.load(EARTH_TEX);
+const ORBIT_R = 6.2;
+const earth = new THREE.Mesh(new THREE.SphereGeometry(1.05, 64, 40), new THREE.MeshLambertMaterial({map:earthTex}));
+const omoon = new THREE.Mesh(new THREE.SphereGeometry(0.34, 48, 32), new THREE.MeshLambertMaterial({map:moonTex}));
+oscene.add(earth, omoon);
+const home = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), new THREE.MeshBasicMaterial({color:0xe9c47c}));
+earth.add(home);
+const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.25); oscene.add(sunLight);
+oscene.add(new THREE.AmbientLight(0x4a5d8a, 0.32));
+const orbitLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color:0x6e7993, transparent:true, opacity:.55}));
+oscene.add(orbitLine);
+const linkLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]), new THREE.LineDashedMaterial({color:0xa7b0c3, dashSize:.18, gapSize:.14, transparent:true, opacity:.5}));
+oscene.add(linkLine);
+// sunlight rays: a group whose +x axis points to the Sun
+const rays = new THREE.Group();
+{
+  const mat = new THREE.LineBasicMaterial({color:0xe9c47c, transparent:true, opacity:.16});
+  for (let i=-3;i<=3;i++) for (let j=-1;j<=1;j++) {
+    if (Math.abs(i)<1 && j===0) continue;
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(16, i*1.9, j*2.4), new THREE.Vector3(-9, i*1.9, j*2.4)]);
+    rays.add(new THREE.Line(g, mat));
+  }
+  const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(), color:0xffd27a, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  sunSprite.position.set(15,0,0); sunSprite.scale.set(7,7,1); rays.add(sunSprite);
+}
+oscene.add(rays);
+const ostars = makeStars(900, 90); ostars.material.uniforms.uOp.value = .7; oscene.add(ostars);
+
+const oLabels = {};
+for (const [k,txt,cls] of [["moon",tx("olMoon"),""],["earth",tx("olEarth"),""],["sun",tx("olSun"),"sun"],["home","","home"]]) {
+  const el = document.createElement("div"); el.className = "olabel "+cls; el.textContent = txt; obox.appendChild(el); oLabels[k]=el;
+}
+let orbitAz = 0.6, orbitEl = 0.42, orbitDrag=false, orbitLastMs = -1e15, orbitTouched=0;
+// zoom: 1 = whole orbit fits; smaller = closer. Focus: Earth or the Moon.
+let oZoom = 1, oZoomT = 1, oFocus = "earth", oBlend = 0;
+const oTarget = new THREE.Vector3();
+const ORBIT_FIT = 7.6;
+const oFit = () => camDistance(ocam, ORBIT_FIT, 1);
+const oMinZoom = () => (oFocus === "moon" ? 0.95 : 2.3) / oFit();
+const O_MAX_ZOOM = 2.2;
+function setZoom(z){
+  oZoomT = Math.max(oMinZoom(), Math.min(O_MAX_ZOOM, z));
+  orbitTouched = performance.now();
+  $("#oZoomIn").disabled = oZoomT <= oMinZoom()*1.001;
+  $("#oZoomOut").disabled = oZoomT >= O_MAX_ZOOM*0.999;
+}
+const optrs = new Map(); let pinch = null;
+const pdist = () => { const p = [...optrs.values()]; return Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y) || 1; };
+ocanvas.addEventListener("pointerdown",(e)=>{
+  optrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  try{ocanvas.setPointerCapture(e.pointerId);}catch(_){}
+  orbitDrag = true; orbitTouched = performance.now();
+  if (optrs.size === 2) pinch = {d: pdist(), z: oZoomT};
+});
+ocanvas.addEventListener("pointermove",(e)=>{
+  const p = optrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (optrs.size >= 2 && pinch) { setZoom(pinch.z * pinch.d / pdist()); return; }
+  orbitAz -= dx*0.008; orbitEl = Math.max(-1.2, Math.min(1.35, orbitEl + dy*0.006)); orbitTouched = performance.now();
+});
+const oEnd=(e)=>{ optrs.delete(e.pointerId); if (optrs.size < 2) pinch = null; if (!optrs.size) orbitDrag = false; };
+ocanvas.addEventListener("pointerup",oEnd); ocanvas.addEventListener("pointercancel",oEnd);
+ocanvas.addEventListener("wheel",(e)=>{
+  e.preventDefault();
+  const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+  setZoom(oZoomT * Math.exp(Math.max(-60, Math.min(60, dy)) * 0.0022));
+}, {passive:false});
+ocanvas.addEventListener("dblclick",()=>{ setZoom(oFocus === "moon" ? 0.16 : 1); });
+$("#oZoomIn").addEventListener("click",()=>{ setZoom(oZoomT/1.6); });
+$("#oZoomOut").addEventListener("click",()=>{ setZoom(oZoomT*1.6); });
+function setFocus(f){
+  oFocus = f;
+  $("#oFocusEarth").setAttribute("aria-pressed", f==="earth" ? "true":"false");
+  $("#oFocusMoon").setAttribute("aria-pressed", f==="moon" ? "true":"false");
+  setZoom(f === "moon" ? Math.min(oZoomT, 0.16) : 1);
+}
+$("#oFocusEarth").addEventListener("click",()=>setFocus("earth"));
+$("#oFocusMoon").addEventListener("click",()=>setFocus("moon"));
+
+const v3 = (a) => new THREE.Vector3(a[0],a[1],a[2]);
+function updateOrbit(date){
+  const g = core.orbitGeometry(date);
+  const r = ORBIT_R * g.moonKm/384400;
+  const md = v3(g.moonDir), sd = v3(g.sunDir).normalize();
+  omoon.position.copy(md).multiplyScalar(r);
+  omoon.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(v3(g.moonX), v3(g.moonZ), v3(g.moonY).negate()));
+  earth.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(v3(g.earthX), v3(g.earthZ), v3(g.earthY).negate()));
+  sunLight.position.copy(sd).multiplyScalar(20);
+  rays.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0), sd);
+  linkLine.geometry.setFromPoints([new THREE.Vector3(), omoon.position.clone()]); linkLine.computeLineDistances();
+  const c = CITIES[st.cityIdx], la=c[1]*DEG, lo=c[2]*DEG, rr=1.06;
+  home.position.set(rr*Math.cos(la)*Math.cos(lo), rr*Math.sin(la), -rr*Math.cos(la)*Math.sin(lo));
+  oLabels.home.textContent = cityName();
+  const ms = date.getTime();
+  if (Math.abs(ms - orbitLastMs) > 6*HOUR) {
+    orbitLastMs = ms; const pts = [];
+    for (let k=-56;k<=56;k++) { const gg = core.orbitGeometry(new Date(ms + k*27.3217/112*DAY)); pts.push(v3(gg.moonDir).multiplyScalar(ORBIT_R*gg.moonKm/384400)); }
+    orbitLine.geometry.dispose(); orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  }
+}
+function projectLabel(el, pos, w, h, cam3){
+  const p = pos.clone().project(cam3);
+  if (p.z > 1 || Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) { el.hidden = true; return; }
+  el.hidden = false; el.style.transform = "translate("+((p.x+1)/2*w).toFixed(1)+"px,"+((1-p.y)/2*h).toFixed(1)+"px) translate(-50%,-160%)";
+}
+let orbitVisible = true;
+if ("IntersectionObserver" in window) new IntersectionObserver((en)=>{ orbitVisible = en[0].isIntersecting; }).observe(obox);
+
+// ---------- UI writers ----------
+function setText(id, s){ const el=document.getElementById(id); if (el && el.textContent!==s) el.textContent=s; }
+function setHTML(id, s){ const el=document.getElementById(id); if (el && el.innerHTML!==s) el.innerHTML=s; }
+
+function writeFast(f){
+  const now = f.date;
+  setText("phaseName", phName(f.key));
+  setText("pageH1", tx(MW && !MW.city ? "h1Root" : "h1City", {city: cityName()}));
+  setText("phaseNo", tx(f.lon < 180 ? "waxNo" : "wanNo", {city: cityName()}));
+  setHTML("illumBig", fmt1(f.frac*100)+"<small>%</small>");
+  setText("illumSide", tx("illumSide"));
+  $("#knob").style.left = (f.lon/360*100).toFixed(2)+"%";
+  setText("cycleMeta", tx("cycleMeta", {age: fmt1(f.age), since: f.prevNew ? tx("cycleSince", {d: fDay.format(f.prevNew.date)}) : "", n: f.lunation||"—"}));
+
+  // next big event
+  let lead, sub;
+  if (f.nearest && f.nearest.q===2) {
+    const dt = f.nearest.date - now;
+    lead = dt > 0 ? tx("exactFull", {d: dur(dt)}) : tx("wasFull", {d: dur(dt)});
+    sub = tx("subNearest", {day: fDay.format(f.nearest.date), time: T(f.nearest.date), day2: fDay.format(f.nextNew.date), d2: dur(f.nextNew.date-now)});
+  } else {
+    const nf = f.nextFull;
+    lead = tx("fullIn", {d: dur(nf.date-now)});
+    const after = f.nextQ && f.nextQ.q!==2 ? tx("beforeThat", {ph: phName(QKEY[f.nextQ.q]).toLowerCase(), day: fDay.format(f.nextQ.date), time: T(f.nextQ.date)}) : "";
+    sub = tx("subFull", {day: fDayY.format(nf.date), time: T(nf.date), zone: zone(nf.date), after});
+  }
+  setHTML("nextLead", lead); setText("nextSub", sub);
+  setText("fsPhase", phName(f.key));
+  setText("ocTitle", phName(f.key)+" · "+fDay.format(now)+", "+T(now));
+  setHTML("ocLine", tx("ocLine", {pct: fmt1(f.frac*100), e: Math.round(f.elong), km: fmtInt(f.distKm), city: cityName()}));
+  setHTML("fsLine", tx("fsLine", {pct: fmt1(f.frac*100), lead: lead.replace(/<[^>]+>/g,""), city: cityName(), pos: f.alt>0 ? tx("altUp", {a: Math.round(f.alt)}) : tx("belowHorizon")}));
+
+  // stage caption
+  const dirC = LANG === "th" ? dL(f.az) : dS(f.az);
+  setHTML("stageCap", tx(st.view==="sky" ? "capSky" : "capNorth", {city: cityName(), time: T(now), alt: fmt1(f.alt), dir: dirC}));
+
+  // clock
+  const live = st.live;
+  $("#clock").classList.toggle("travel", !live);
+  setText("clockText", tx(live ? "clockLive" : "clockTravel")+fTimeS.format(now)+" "+zone(now));
+  const off = now.getTime() - Date.now();
+  setHTML("when", fDayY.format(now)+" · "+T(now)+" "+zone(now)+"<small>"+(live ? tx("live") : (off>=0 ? tx("ahead", {d: durRaw(off)}) : dur(off)))+"</small>");
+  $("#liveBtn").disabled = live;
+  $("#stageLive").hidden = live;
+  if (!scrubbing) $("#scrub").value = Math.round(off/MIN);
+
+  // sky colour
+  const sc = skyColors(f.sunAlt);
+  stage.style.setProperty("--stage-top", sc.top); stage.style.setProperty("--stage-bot", sc.bot);
+  stars.material.uniforms.uOp.value = 0.15 + 0.85*sc.stars;
+  moonMat.uniforms.uEarth.value = 0.004 + 0.11*Math.pow(1-f.frac, 2.2);
+  halo.material.opacity = 0.08 + 0.55*Math.pow(f.frac, 2);
+  writeVisibility(f, st.slow);
+}
+
+function writeVisibility(f, s){
+  if (!s) return;
+  const now = f.date;
+  const altTxt = f.alt < 1 ? tx("altJust", {dir: dL(f.az)}) : tx("altAbove", {a: Math.round(f.alt), dir: dL(f.az)});
+  const shapeKey = {new:"shNew", wxc:"shCres", wnc:"shCres", fq:"shHalf", lq:"shHalf", full:"shFull",
+    wxg: f.frac > 0.95 ? "shNearly" : "shGib", wng: f.frac > 0.95 ? "shNearly" : "shGib"}[f.key];
+  const shape = tx(shapeKey);
+  let state, head, txt = [];
+  const upAll = !s.rise && !s.set && f.alt > 0, downAll = !s.rise && !s.set && f.alt <= 0;
+  if (f.elong < 9) {
+    state="below"; head=tx("hGlare");
+    txt.push(tx("tGlare", {e: Math.round(f.elong)}));
+  } else if (f.alt > 0) {
+    if (f.sunAlt < -6) { state="visible"; head=tx("hVisible"); txt.push(tx("tVisible", {shape, alt: altTxt, dark: tx(f.sunAlt < -12 ? "darkFull" : "darkEnough")})); }
+    else if (f.sunAlt < 0) { state="twilight"; head=tx("hTwilight"); txt.push(tx("tTwilight", {shape, alt: altTxt})); }
+    else { state="day"; head=tx("hDay"); txt.push(tx("tDay", {shape, alt: altTxt})); }
+    if (f.alt < 6) txt.push(tx("tLow"));
+    if (upAll) txt.push(tx("tUpAll"));
+    else if (s.set) txt.push(tx("tSets", {time: T(s.set.date), day: sameDay(s.set.date,now) ? "" : dayWord(s.set.date,now)+" ", dir: dL(s.setAz), d: dur(s.set.date-now)}));
+  } else {
+    state="below"; head=tx("hBelow");
+    if (downAll) txt.push(tx("tDownAll", {city: cityName(), ns: tx(southern() ? "north" : "south")}));
+    else if (s.rise) {
+      const sunAtRise = horizonAt(Sun, s.rise).altitude;
+      txt.push(tx("tRises", {time: T(s.rise.date), day: dayWord(s.rise.date,now), dir: dL(s.riseAz), d: dur(s.rise.date-now), when: tx(sunAtRise < -6 ? "riseDark" : sunAtRise < 0 ? "riseTwi" : "riseDay")}));
+    }
+  }
+  if (f.alt <= 0) txt.push(tx("tThrough"));
+  const pill = $("#visPill"); pill.dataset.s = state; pill.textContent = f.alt > 0 ? tx("pillUp", {a: Math.round(f.alt)}) : tx("pillDown", {a: Math.round(-f.alt)});
+  setText("visHead", head);
+  setHTML("visText", txt.join(" "));
+
+  setText("fRise", s.rise ? T(s.rise.date) : tx(upAll ? "alreadyUp" : "noRise"));
+  setText("fRiseD", s.rise ? dayWord(s.rise.date,now)+" · "+dS(s.riseAz) : tx("next48"));
+  setText("fSet", s.set ? T(s.set.date) : tx(downAll ? "alreadyDown" : "noSet"));
+  setText("fSetD", s.set ? dayWord(s.set.date,now)+" · "+dS(s.setAz) : tx("next48"));
+  const tr = s.transit;
+  setText("fHigh", T(tr.time.date));
+  setText("fHighD", dayWord(tr.time.date,now)+" · "+(tr.hor.altitude >= 0 ? Math.round(tr.hor.altitude)+"° "+dS(tr.hor.azimuth) : tx("stillBelow")));
+}
+
+function writeSlow(f, s){
+  st.slow = s;
+  const now = f.date;
+  setText("skyTitle", tx("skyTitle", {city: cityName()}));
+  setText("skyEyebrow", st.live ? tx("next24") : tx("around24", {d: fDay.format(now)}));
+  drawChart(s, now.getTime());
+  // best window
+  let b;
+  if (s.best) {
+    const p = s.best.peak;
+    const a = new Date(s.best.a), z = new Date(s.best.b);
+    const isNow = s.best.a <= now.getTime()+1;
+    const from = isNow ? tx("now") : T(a)+(sameDay(a,now)?"":" "+dayWord(a,now));
+    const to = T(z)+(sameDay(z,a)?"":" "+dayWord(z,now));
+    const range = s.best.open ? (isNow ? tx("rangeNowNight") : tx("rangeFromNight", {from})) : tx("rangeFromTo", {from, to});
+    b = tx("bestView", {range, time: T(new Date(p.t)), alt: Math.round(p.alt), dir: dL(p.az)});
+  } else if (s.anyUp) {
+    b = tx("bestNoDark", {time: T(new Date(s.anyUp.t)), alt: Math.round(s.anyUp.alt), dir: dS(s.anyUp.az)});
+  } else {
+    b = tx("bestNone", {city: cityName()});
+  }
+  setHTML("best", b);
+
+  // events
+  const ul = $("#events"); ul.innerHTML = "";
+  const upcoming = f.quarters.filter(e => e.date.getTime() > now.getTime()).slice(0,8);
+  for (const e of upcoming) {
+    const h = horizonAt(Moon, e.date);
+    const li = document.createElement("li"); if (e.q===2) li.className="ev-full";
+    const cv = document.createElement("canvas"); drawPhaseIcon(cv, [0,90,180,270][e.q], 30);
+    const mid = document.createElement("div");
+    mid.innerHTML = '<div class="ev-name">'+phName(QKEY[e.q])+'</div><div class="ev-when num">'+fDayY.format(e.date)+" · "+T(e.date)+" "+zone(e.date)+'</div>';
+    const right = document.createElement("div"); right.className="ev-right num";
+    right.innerHTML = dur(e.date-now)+"<small>"+(h.altitude>0 ? tx("evUp", {a: Math.round(h.altitude), city: cityName()}) : tx("evBelow"))+"</small>";
+    li.append(cv, mid, right); ul.appendChild(li);
+  }
+
+  // almanac
+  const L = s.lib, la = CITIES[st.cityIdx][1];
+  const neverSets = la >= 0 ? f.dec > 90-la : f.dec < -90-la;
+  const neverRises = la >= 0 ? f.dec < la-90 : f.dec > 90+la;
+  const eclKind = tx("ecl_"+s.ecl.kind);
+  const sunState = f.sunAlt>0 ? "sDay" : f.sunAlt>-6 ? "sCivil" : f.sunAlt>-12 ? "sNaut" : f.sunAlt>-18 ? "sAstro" : "sNight";
+  const rows = [
+    [tx("aIllum"), fmt1(f.frac*100)+" %", tx("aIllumD", {m: f.mag.toFixed(1)})],
+    [tx("aPhase"), fmt1(f.phaseAngle)+"°", tx("aPhaseD")],
+    [tx("aElong"), fmt1(f.elong)+"°", tx("aElongD")],
+    [tx("aAge"), tx("days", {x: fmt1(f.age)}), f.prevNew ? tx("aAgeD", {d: fDay.format(f.prevNew.date), time: T(f.prevNew.date)}) : ""],
+    [tx("aLun"), String(f.lunation||"—"), tx("aLunD")],
+    [tx("aDist"), tx("km", {x: fmtInt(L.dist_km)}), tx("kmFrom", {x: fmtInt(f.distKm), city: cityName()})],
+    [tx("aSize"), (L.diam_deg*60).toFixed(1)+"′", tx("aSizeD")],
+    [tx("aPos"), fmt1(f.alt)+"° · "+Math.round(f.az)+"° "+dS(f.az), tx("aPosD", {city: cityName()})],
+    [tx("aDec"), sgn(f.dec)+"°", tx(neverSets ? "aDecSets" : neverRises ? "aDecRises" : "aDecD")],
+    [tx("aCon"), s.con.name, tx("aConD")],
+    [tx("aLib"), tx("aLibV", {a: sgn(L.elat), b: sgn(L.elon)}), tx("aLibD", {pole: tx(L.elat<0 ? "poleS" : "poleN"), limb: tx(L.elon<0 ? "limbW" : "limbE")})],
+    [tx("aPeri"), fDay.format(s.peri.time.date)+" "+T(s.peri.time.date), tx("km", {x: fmtInt(s.peri.dist_km)})],
+    [tx("aApo"), fDay.format(s.apo.time.date)+" "+T(s.apo.time.date), tx("km", {x: fmtInt(s.apo.dist_km)})],
+    [tx("aEcl"), fDayY.format(s.ecl.peak.date)+" "+T(s.ecl.peak.date), eclKind+" · "+(s.eclAlt>0 ? tx("eclUp", {a: Math.round(s.eclAlt), city: cityName()}) : tx("eclDown", {city: cityName()}))],
+    [tx("aSun"), fmt1(f.sunAlt)+"°", tx(sunState)]
+  ];
+  $("#alm").innerHTML = rows.map(r => "<tr><th>"+r[0]+"</th><td>"+r[1]+"<small>"+r[2]+"</small></td></tr>").join("");
+
+  // orbit explanation
+  const e = Math.round(f.elong);
+  const why = tx(f.elong < 20 ? "why1" : f.elong < 80 ? "why2" : f.elong < 100 ? "why3" : f.elong < 172 ? "why4" : "why5");
+  setText("orbitText", tx("orbitText", {e, why}));
+
+  // the 30-night strip
+  writeNights(now);
+}
+
+function writeNights(now){
+  const p0 = parts(new Date());
+  const key = p0.y+"-"+p0.m+"-"+p0.d+"|"+st.cityIdx+"|"+LANG;
+  const strip = $("#strip");
+  if (key !== st.nightsKey) {
+    st.nightsKey = key; strip.innerHTML = "";
+    const base = localDate(p0.y,p0.m,p0.d,12,0);
+    for (let i=0;i<30;i++){
+      const noon = new Date(base.getTime()+i*DAY), q = parts(noon);
+      const at = localDate(q.y,q.m,q.d,22,0);
+      const lon = A.MoonPhase(at), fr = A.Illumination(Moon, at).phase_fraction;
+      const b = document.createElement("button"); b.type="button"; b.className="night"+(i===0?" today":"")+(fr>0.985?" full":"");
+      b.dataset.t = at.getTime();
+      const cv = document.createElement("canvas"); drawPhaseIcon(cv, lon, 34);
+      b.innerHTML = '<span class="wd">'+(i===0?tx("todayCap"):fWd.format(noon))+'</span>';
+      b.appendChild(cv);
+      b.insertAdjacentHTML("beforeend",'<span class="dd num">'+q.d+'.'+q.m+'.</span><span class="pc num">'+Math.round(fr*100)+'%</span>');
+      b.setAttribute("aria-label", tx("nightAria",{d:fDay.format(at), p:Math.round(fr*100)}));
+      b.addEventListener("click",()=>{ jumpTo(+b.dataset.t); });
+      strip.appendChild(b);
+    }
+  }
+  for (const b of strip.children) b.classList.toggle("sel", !st.live && Math.abs(+b.dataset.t - now.getTime()) < 30*MIN);
+}
+
+// ---------- altitude chart ----------
+function drawChart(s, nowMs){
+  const box = $("#chart"); const W = Math.max(280, box.clientWidth||640), H = W < 520 ? 230 : 270;
+  const pl=34, pr=10, pt=20, pb=26, iw=W-pl-pr, ih=H-pt-pb;
+  let lo = Math.min(-20, ...s.samples.map(x=>x.alt)), hi = Math.max(30, ...s.samples.map(x=>x.alt));
+  lo = Math.floor(lo/10)*10; hi = Math.ceil((hi+4)/10)*10;
+  const X = (t)=> pl + (t-s.start)/(s.end-s.start)*iw;
+  const Y = (a)=> pt + (hi-a)/(hi-lo)*ih;
+  let out = '<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" aria-label="'+tx("chartAria")+'">';
+  // bands
+  const cls = (a)=> a>0?"b-day":a>-6?"b-civil":a>-12?"b-naut":a>-18?"b-astro":"b-night";
+  let runC = null, runA = s.start;
+  s.samples.forEach((p,i)=>{
+    const c = cls(p.sun);
+    if (c!==runC) { if (runC) out += '<rect class="'+runC+'" x="'+X(runA).toFixed(1)+'" y="'+pt+'" width="'+(X(p.t)-X(runA)+0.6).toFixed(1)+'" height="'+ih+'"/>'; runC=c; runA=p.t; }
+  });
+  out += '<rect class="'+runC+'" x="'+X(runA).toFixed(1)+'" y="'+pt+'" width="'+(X(s.end)-X(runA)).toFixed(1)+'" height="'+ih+'"/>';
+  // grid
+  for (let a=lo; a<=hi; a+=10) {
+    if (a % 20 !== 0 && hi-lo > 60) continue;
+    out += '<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(a).toFixed(1)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+(a===0?"var(--ink-2)":"rgba(167,176,195,.12)")+'" stroke-width="'+(a===0?1.2:1)+'"/>';
+    out += '<text x="'+(pl-6)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end">'+a+'°</text>';
+  }
+  out += '<text class="lbl" x="'+(W-pr-4)+'" y="'+(Y(0)-5).toFixed(1)+'" text-anchor="end">'+tx("chartHorizon")+'</text>';
+  // hour ticks every 3 h local
+  for (let t = Math.ceil(s.start/HOUR)*HOUR; t <= s.end; t += HOUR) {
+    const h = parts(new Date(t)).h;
+    if (h % 3) continue;
+    const x = X(t);
+    out += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+(pt+ih)+'" y2="'+(pt+ih+4)+'" stroke="var(--ink-3)"/>';
+    out += '<text x="'+x.toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+String(h).padStart(2,"0")+'</text>';
+  }
+  // sun curve
+  let sp = ""; s.samples.forEach((p,i)=>{ const y=Math.max(pt, Math.min(pt+ih, Y(p.sun))); sp += (i?"L":"M")+X(p.t).toFixed(1)+" "+y.toFixed(1); });
+  out += '<path d="'+sp+'" fill="none" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="3 4" opacity=".7"/>';
+  // moon curve: dashed below horizon, solid + soft fill above
+  let below = "", above = "", fill = "";
+  let prevUp = null;
+  s.samples.forEach((p,i)=>{
+    const x = X(p.t).toFixed(1), y = Y(p.alt).toFixed(1);
+    below += (i?"L":"M")+x+" "+y;
+    const up = p.alt > 0;
+    if (up) { above += (prevUp?"L":"M")+x+" "+y; }
+    prevUp = up;
+  });
+  // fill between moon curve and horizon (above only)
+  let seg = [];
+  const flush = ()=>{ if (seg.length>1) { fill += "M"+seg[0][0]+" "+Y(0).toFixed(1)+seg.map(q=>"L"+q[0]+" "+q[1]).join("")+"L"+seg[seg.length-1][0]+" "+Y(0).toFixed(1)+"Z"; } seg=[]; };
+  s.samples.forEach(p=>{ if (p.alt>0) seg.push([X(p.t).toFixed(1), Y(p.alt).toFixed(1)]); else flush(); }); flush();
+  out += '<path d="'+fill+'" fill="rgba(236,231,218,.10)"/>';
+  out += '<path d="'+below+'" fill="none" stroke="var(--ink-3)" stroke-width="1.3" stroke-dasharray="2 4"/>';
+  out += '<path d="'+above+'" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>';
+  // rise / set markers inside window
+  const marks = [];
+  [[s.rise,"rise"],[s.set,"set"]].forEach(([ev,kind])=>{ if (ev && ev.date.getTime()<=s.end) marks.push([ev.date.getTime(),kind]); });
+  for (const [t,kind] of marks) {
+    const x = X(t);
+    out += '<circle cx="'+x.toFixed(1)+'" cy="'+Y(0).toFixed(1)+'" r="4" fill="var(--sky-0)" stroke="var(--ink)" stroke-width="1.5"/>';
+    out += '<text class="lbl" x="'+x.toFixed(1)+'" y="'+(Y(0)+16).toFixed(1)+'" text-anchor="middle">'+(kind==="rise"?tx("chartRise"):tx("chartSet"))+T(new Date(t))+'</text>';
+  }
+  // peak
+  const peak = s.samples.reduce((a,b)=> b.t>=nowMs && b.alt>a.alt ? b : a, {alt:-99});
+  if (peak.alt > 0) {
+    out += '<circle cx="'+X(peak.t).toFixed(1)+'" cy="'+Y(peak.alt).toFixed(1)+'" r="3.5" fill="var(--ink)"/>';
+    out += '<text class="lbl" x="'+X(peak.t).toFixed(1)+'" y="'+(Y(peak.alt)-9).toFixed(1)+'" text-anchor="middle">'+Math.round(peak.alt)+'° '+dS(peak.az)+'</text>';
+  }
+  // now
+  const xn = X(nowMs).toFixed(1);
+  out += '<line x1="'+xn+'" x2="'+xn+'" y1="'+(pt-6)+'" y2="'+(pt+ih)+'" stroke="var(--gold)" stroke-width="1.5"/>';
+  out += '<text class="now-lbl" x="'+xn+'" y="'+(pt-9)+'" text-anchor="middle">'+(st.live?tx("chartNow"):T(new Date(nowMs)))+'</text>';
+  out += '</svg>';
+  box.innerHTML = out;
+}
+
+// ---------- time control ----------
+let scrubbing = false;
+const scrub = $("#scrub");
+scrub.addEventListener("input", ()=>{
+  scrubbing = true; setPlaying(false);
+  st.live = false; st.simMs = Date.now() + (+scrub.value)*MIN;
+  if (+scrub.value === 0) st.live = true;
+  refreshAll(false);
+});
+scrub.addEventListener("change", ()=>{ scrubbing = false; refreshAll(true); });
+function goLive(){ setPlaying(false); st.live = true; st.simMs = Date.now(); refreshAll(true); }
+$("#liveBtn").addEventListener("click", goLive);
+$("#stageLive").addEventListener("click", goLive);
+function togglePlay(){
+  if (!st.playing) { if (st.live) { st.live = false; st.simMs = Date.now(); } setPlaying(true); }
+  else setPlaying(false);
+}
+$("#play").addEventListener("click", togglePlay);
+$("#stagePlay").addEventListener("click", togglePlay);
+// tempo: log scale from 10 min per second to 3 days per second
+const TMIN = Math.log10(1/6), TMAX = Math.log10(72);
+const tempoToH = (v) => Math.pow(10, TMIN + (TMAX-TMIN)*v/100);
+const hToTempo = (h) => Math.round((Math.log10(h)-TMIN)/(TMAX-TMIN)*100);
+function fmtTempo(h){
+  if (h < 0.99) return tx("tMin",{x:Math.round(h*60)});
+  if (h < 23.5) return tx("tH",{x:(h < 10 ? Math.round(h*10)/10 : Math.round(h))});
+  const d = Math.round(h/24*10)/10;
+  return tx(d===1?"tDay1":"tDays",{x:d});
+}
+function setSpeed(h, fromTempo){
+  for (const snap of [1,6,24,48,72]) if (Math.abs(h-snap)/snap < 0.05) h = snap;
+  st.speedH = h;
+  setText("tempoV", fmtTempo(h));
+  if (!fromTempo) $("#tempo").value = hToTempo(h);
+  for (const x of $("#speeds").children) x.setAttribute("aria-pressed", +x.dataset.h === h ? "true":"false");
+}
+$("#tempo").addEventListener("input", ()=>{ setSpeed(tempoToH(+$("#tempo").value), true); });
+$("#speeds").addEventListener("click",(e)=>{
+  const b = e.target.closest("button[data-h]"); if (!b) return;
+  setSpeed(+b.dataset.h, false);
+});
+setSpeed(24, false);
+function playLabels(){
+  const on = st.playing;
+  setText("playText", on ? tx("pause") : tx("playMonth"));
+  $("#play").setAttribute("aria-label", on ? tx("pause") : tx("playAria"));
+  const sp = $("#stagePlay"); sp.setAttribute("aria-label", on ? tx("pause") : tx("playAria")); sp.title = on ? tx("pause") : tx("play");
+}
+function setPlaying(on){
+  st.playing = on;
+  const icon = on ? '<path d="M4 2.5h3v11H4zM9 2.5h3v11H9z" fill="currentColor"/>' : '<path d="M4 2.5v11l9-5.5z" fill="currentColor"/>';
+  $("#playIcon").innerHTML = icon; $("#stagePlayIcon").innerHTML = icon;
+  playLabels();
+  if (!on) refreshAll(true);
+}
+function jumpTo(ms){ setPlaying(false); st.live = false; st.simMs = ms; refreshAll(true); document.getElementById("stage").scrollIntoView({behavior: reduceMotion?"auto":"smooth", block:"start"}); }
+
+// ---------- full screen ----------
+const fsBtn = $("#fsBtn");
+const ICON_EXPAND = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_CLOSE = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+fsBtn.innerHTML = ICON_EXPAND;
+function fsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function openFull(){
+  if (isFull) return;
+  if (typeof closeOrbitFull === "function") closeOrbitFull();
+  isFull = true;
+  stage.classList.add("is-full"); document.documentElement.classList.add("fs-lock");
+  fsLabels();
+  // real full screen where the browser allows it; the page-filling view works either way
+  try { const rq = stage.requestFullscreen || stage.webkitRequestFullscreen; if (rq) { const pr = rq.call(stage); if (pr && pr.catch) pr.catch(()=>{}); } } catch(e) {}
+  fsBtn.focus();
+  placeCamera();
+}
+function closeFull(){
+  if (!isFull) return;
+  isFull = false;
+  stage.classList.remove("is-full"); document.documentElement.classList.remove("fs-lock");
+  fsLabels();
+  try { if (fsElement()) { const ex = document.exitFullscreen || document.webkitExitFullscreen; const pr = ex && ex.call(document); if (pr && pr.catch) pr.catch(()=>{}); } } catch(e) {}
+  placeCamera();
+}
+fsBtn.addEventListener("click", ()=>{ isFull ? closeFull() : openFull(); });
+
+// full screen for the Sun, Earth and Moon view
+const ofsBtn = $("#orbitFsBtn");
+let orbitFull = false;
+ofsBtn.innerHTML = ICON_EXPAND;
+function openOrbitFull(){
+  if (orbitFull) return;
+  if (isFull) closeFull();
+  orbitFull = true; orbitVisible = true;
+  obox.classList.add("is-full"); document.documentElement.classList.add("fs-lock");
+  fsLabels();
+  try { const rq = obox.requestFullscreen || obox.webkitRequestFullscreen; if (rq) { const pr = rq.call(obox); if (pr && pr.catch) pr.catch(()=>{}); } } catch(e) {}
+  ofsBtn.focus();
+}
+function closeOrbitFull(){
+  if (!orbitFull) return;
+  orbitFull = false;
+  obox.classList.remove("is-full"); document.documentElement.classList.remove("fs-lock");
+  fsLabels();
+  try { if (fsElement()) { const ex = document.exitFullscreen || document.webkitExitFullscreen; const pr = ex && ex.call(document); if (pr && pr.catch) pr.catch(()=>{}); } } catch(e) {}
+}
+ofsBtn.addEventListener("click", ()=>{ orbitFull ? closeOrbitFull() : openOrbitFull(); });
+function fsLabels(){
+  fsBtn.innerHTML = isFull ? ICON_CLOSE : ICON_EXPAND;
+  fsBtn.setAttribute("aria-label", tx(isFull ? "fsCloseAria" : "fsMoonAria")); fsBtn.title = tx(isFull ? "close" : "fullScreen");
+  ofsBtn.innerHTML = orbitFull ? ICON_CLOSE : ICON_EXPAND;
+  ofsBtn.setAttribute("aria-label", tx(orbitFull ? "fsCloseAria" : "fsOrbitAria")); ofsBtn.title = tx(orbitFull ? "close" : "fullScreen");
+}
+
+document.addEventListener("keydown", (e)=>{ if (e.key !== "Escape") return; if (isFull) closeFull(); if (orbitFull) closeOrbitFull(); });
+const onFsChange = ()=>{ if (fsElement()) return; if (isFull) closeFull(); if (orbitFull) closeOrbitFull(); };
+document.addEventListener("fullscreenchange", onFsChange);
+document.addEventListener("webkitfullscreenchange", onFsChange);
+
+$("#vSky").addEventListener("click",()=>{ st.view="sky"; $("#vSky").setAttribute("aria-pressed","true"); $("#vNorth").setAttribute("aria-pressed","false"); refreshAll(false); });
+$("#vNorth").addEventListener("click",()=>{ st.view="north"; $("#vNorth").setAttribute("aria-pressed","true"); $("#vSky").setAttribute("aria-pressed","false"); refreshAll(false); });
+
+function simDate(){ return new Date(st.live ? Date.now() : st.simMs); }
+function refreshAll(withSlow){
+  const d = simDate();
+  updateSky(d); placeCamera(); drawCompass();
+  const f = fastState(d); st.fast = f;
+  if (withSlow || !st.slow) { writeSlow(f, slowState(d)); st.slowAt = d.getTime(); st.lastSlow = performance.now(); }
+  writeFast(f);
+  updateOrbit(d);
+}
+
+// ---------- main loop ----------
+let lastFrame = performance.now(), clockT = 0;
+function frame(nowP){
+  const dt = Math.min(0.1, (nowP - lastFrame)/1000); lastFrame = nowP; clockT += dt;
+  if (st.playing) {
+    st.simMs += st.speedH*HOUR*dt;
+    const max = Date.now() + 45*DAY;
+    if (st.simMs > max) { st.simMs = max; setPlaying(false); }
+  }
+  const d = simDate();
+  const moving = st.playing || scrubbing;
+  // geometry + fast numbers
+  if (moving || nowP - st.lastFast > 1000) {
+    st.lastFast = nowP;
+    updateSky(d); placeCamera(); drawCompass();
+    const f = fastState(d); st.fast = f;
+    // slow data: every minute when live, ~4 times a second while time is moving
+    const needSlow = (moving && nowP - st.lastSlow > 250) || (!moving && (nowP - st.lastSlow > 60000 || Math.abs(d.getTime()-st.slowAt) > 10*MIN));
+    if (needSlow) { writeSlow(f, slowState(d)); st.slowAt = d.getTime(); st.lastSlow = nowP; }
+    writeFast(f);
+    if (orbitVisible) updateOrbit(d);
+  } else placeCamera();
+
+  // moon orientation: true orientation, plus drag offset easing back, plus intro turn
+  if (introT < 1) {
+    introT = Math.min(1, introT + dt/2.6);
+    const e = 1 - Math.pow(1-introT, 3);
+    introFrom.setFromAxisAngle(upDir, (1-e)*2.6);
+    moon.quaternion.copy(introFrom).multiply(baseQ);
+  } else {
+    if (!dragging && nowP - releasedAt > 2200) dragQ.slerp(qId, 1 - Math.exp(-dt*2.4));
+    moon.quaternion.copy(dragQ).multiply(baseQ);
+  }
+  stars.material.uniforms.uTime.value = clockT;
+
+  if (renderer) {
+    resizeRenderer(renderer, cam, stage);
+    stars.material.uniforms.uPR.value = renderer.getPixelRatio();
+    renderer.render(scene, cam);
+  }
+  if (orend && orbitVisible) {
+    resizeRenderer(orend, ocam, obox);
+    ostars.material.uniforms.uPR.value = orend.getPixelRatio();
+    if (!reduceMotion && !orbitDrag && nowP - orbitTouched > 4000) orbitAz += dt*0.06;
+    oZoom += (oZoomT - oZoom) * (1 - Math.exp(-dt*9));
+    // glide between Earth and the Moon, then follow the Moon exactly while it moves
+    const wantB = oFocus === "moon" ? 1 : 0;
+    oBlend += (wantB - oBlend) * (1 - Math.exp(-dt*6));
+    if (Math.abs(oBlend - wantB) < 0.001) oBlend = wantB;
+    oTarget.copy(omoon.position).multiplyScalar(oBlend);
+    const R = oFit() * oZoom;
+    ocam.position.set(oTarget.x + R*Math.cos(orbitEl)*Math.cos(orbitAz), oTarget.y + R*Math.sin(orbitEl), oTarget.z + R*Math.cos(orbitEl)*Math.sin(orbitAz));
+    ocam.lookAt(oTarget);
+    orend.render(oscene, ocam);
+    const w = obox.clientWidth, h = obox.clientHeight;
+    projectLabel(oLabels.moon, omoon.position.clone().add(new THREE.Vector3(0,0.35,0)), w, h, ocam);
+    projectLabel(oLabels.earth, new THREE.Vector3(0,1.1,0), w, h, ocam);
+    projectLabel(oLabels.sun, rays.localToWorld(new THREE.Vector3(9,0,0)), w, h, ocam);
+    const hp = home.getWorldPosition(new THREE.Vector3());
+    const facing = hp.clone().normalize().dot(ocam.position.clone().sub(hp).normalize()) > 0.1;
+    if (facing) projectLabel(oLabels.home, hp, w, h, ocam); else oLabels.home.hidden = true;
+  }
+  requestAnimationFrame(frame);
+}
+
+let resizeTimer = 0;
+window.addEventListener("resize", ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(()=>{ if (st.slow) drawChart(st.slow, simDate().getTime()); }, 150); });
+
+// ---------- language switch ----------
+function applyStatic(){
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = tx(el.getAttribute("data-i18n"));
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", tx(el.getAttribute("data-i18n-aria")));
+  for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = tx(el.getAttribute("data-i18n-title"));
+  $("#langEn").setAttribute("aria-pressed", LANG==="en" ? "true" : "false");
+  $("#langTh").setAttribute("aria-pressed", LANG==="th" ? "true" : "false");
+  oLabels.moon.textContent = tx("olMoon"); oLabels.earth.textContent = tx("olEarth"); oLabels.sun.textContent = tx("olSun");
+}
+function setLang(l){
+  if (l !== "en" && l !== "th") return;
+  try { localStorage.setItem("moonwatch.lang", l); } catch(e) {}
+  if (MW) { location.href = pagePath(MW.city ? st.cityIdx : null, l); return; }
+  LANG = l;
+  applyStatic(); buildCities(); setTZ(TZ);
+  setText("tempoV", fmtTempo(st.speedH)); playLabels(); fsLabels();
+  st.nightsKey = ""; refreshAll(true);
+}
+$("#langEn").addEventListener("click", ()=>setLang("en"));
+$("#langTh").addEventListener("click", ()=>setLang("th"));
+applyStatic(); setTZ(TZ); setText("tempoV", fmtTempo(st.speedH)); playLabels(); fsLabels();
+
+refreshAll(true);
+if (!reduceMotion) { introFrom.setFromAxisAngle(upDir, 2.6); }
+requestAnimationFrame(frame);
+})();
